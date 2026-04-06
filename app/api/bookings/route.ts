@@ -206,7 +206,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
 
-  const isProvider = booking.gig?.posted_by === user.id;
+  const isProvider = booking.gig?.[0]?.posted_by === user.id;
   const isClient = booking.user_id === user.id;
 
   // Only provider can update status to completed or payment
@@ -284,7 +284,7 @@ export async function DELETE(req: Request) {
   }
 
   const isClient = booking.user_id === user.id;
-  const isProvider = booking.gig?.posted_by === user.id;
+  const isProvider = booking.gig?.[0]?.posted_by === user.id;
 
   if (!isClient && !isProvider) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
