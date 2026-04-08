@@ -5,7 +5,6 @@ import {
   Zap,
   Code,
   User,
-  MoreVertical,
   DollarSign,
 } from "lucide-react";
 import { poppins } from "./fonts";

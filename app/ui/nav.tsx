@@ -47,6 +47,9 @@ export function TopNav({ user }: { user: any }) {
         <a href="/post-gig" className="font-semibold text-lg">
           Post a Gig
         </a>
+        <a href="/dashboard" className="font-semibold text-lg">
+          Dashboard
+        </a>
       </div>
       {!user ? (
         <div className="flex gap-2">
