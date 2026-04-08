@@ -5,14 +5,10 @@ export interface DatabaseGig {
   price: number;
   location: string;
   created_at: string;
-  per: "gig" | "hour" | "day";
+  per: "gig" | "hour" | "project" | "day";
   category_id: string;
   posted_by: string;
-  cover_image?: string | null;
-  portfolio_images?: string[];
-  qualifications?: string | null;
-  skills?: string[];
-  status?: string;
+  cover?: string | null;
   categories: {
     id: string;
     name: string;

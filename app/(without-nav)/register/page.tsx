@@ -53,6 +53,16 @@ export default function Register() {
           </div>
           <div className="relative w-3/4 border-b p-1 flex items-center justify-between">
             <input
+              className="w-[90%] outline-none"
+              placeholder="Institution (e.g. UoN)"
+              type="text"
+              name="institution"
+              required
+            />
+            <User className="" />
+          </div>
+          <div className="relative w-3/4 border-b p-1 flex items-center justify-between">
+            <input
               className="w-4/5 outline-none"
               type="password"
               placeholder="Password"
@@ -79,6 +89,9 @@ export default function Register() {
           >
             {pending ? "Signing Up..." : "Sign Up"}
           </button>
+          <p className="w-3/4 text-xs text-secondary/80 text-center">
+            Only verified campus emails are allowed (.edu or .ac.ke).
+          </p>
           <div className="flex items-center gap-2 text-secondary/80">
             Already have an account?{" "}
             <a className="text-neutral-light/80 underline" href="/login">

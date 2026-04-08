@@ -26,7 +26,6 @@ export default function PaymentModal({
     "idle" | "processing" | "prompt_sent" | "success" | "error"
   >("idle");
   const [errorMessage, setErrorMessage] = useState("");
-  const [checkoutRequestId, setCheckoutRequestId] = useState("");
 
   if (!isOpen) return null;
 
@@ -52,14 +51,15 @@ export default function PaymentModal({
         throw new Error(data.error || "Failed to initiate payment");
       }
 
-      setCheckoutRequestId(data.checkoutRequestId);
       setStatus("prompt_sent");
 
       // Start polling for status
       pollPaymentStatus(data.paymentId);
-    } catch (error: any) {
+    } catch (error: unknown) {
       setStatus("error");
-      setErrorMessage(error.message);
+      setErrorMessage(
+        error instanceof Error ? error.message : "Failed to initiate payment",
+      );
     } finally {
       setLoading(false);
     }
@@ -98,7 +98,7 @@ export default function PaymentModal({
             "Payment verification timed out. Please check your M-Pesa messages.",
           );
         }
-      } catch (error) {
+      } catch {
         attempts++;
         if (attempts < maxAttempts) {
           setTimeout(checkStatus, 5000);
@@ -129,7 +129,7 @@ export default function PaymentModal({
         </div>
 
         {/* Amount Display */}
-        <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 mb-6 text-white">
+  <div className="bg-linear-to-r from-green-500 to-emerald-600 rounded-xl p-4 mb-6 text-white">
           <p className="text-sm opacity-90">Amount to Pay</p>
           <p className="text-3xl font-bold">KES {amount.toLocaleString()}</p>
         </div>

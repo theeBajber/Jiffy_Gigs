@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { initiateSTKPush } from "@/lib/mpesa";
+import axios from "axios";
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,6 +22,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Booking ID and phone number are required" },
         { status: 400 },
+      );
+    }
+
+    const requiredMpesaVars = [
+      "MPESA_CONSUMER_KEY",
+      "MPESA_CONSUMER_SECRET",
+      "MPESA_SHORTCODE",
+      "MPESA_PASSKEY",
+    ] as const;
+
+    const missingVars = requiredMpesaVars.filter(
+      (key) => !process.env[key] || !process.env[key]?.trim(),
+    );
+
+    if (missingVars.length > 0) {
+      return NextResponse.json(
+        {
+          error: "M-Pesa configuration missing",
+          details: `Set: ${missingVars.join(", ")}`,
+        },
+        { status: 500 },
       );
     }
 
@@ -69,14 +91,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const bookingGig = Array.isArray(booking.gigs)
+      ? booking.gigs[0]
+      : booking.gigs;
+
+    if (!bookingGig?.price || !bookingGig?.title || !bookingGig?.posted_by) {
+      return NextResponse.json(
+        { error: "Invalid booking gig data for payment" },
+        { status: 400 },
+      );
+    }
+
     // Initiate M-Pesa STK Push
-    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/callback`;
+    const callbackUrl =
+      process.env.MPESA_CALLBACK_URL ||
+      (process.env.NEXT_PUBLIC_APP_URL
+        ? `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/callback`
+        : new URL("/api/payments/callback", req.nextUrl.origin).toString());
 
     const stkResponse = await initiateSTKPush({
       phoneNumber,
-      amount: booking.gigs.price,
+      amount: Number(bookingGig.price),
       accountReference: `GIG${bookingId.slice(0, 8)}`,
-      transactionDesc: `Payment for ${booking.gigs.title.slice(0, 13)}`,
+      transactionDesc: `Payment for ${bookingGig.title.slice(0, 13)}`,
       callbackUrl,
     });
 
@@ -96,15 +133,15 @@ export async function POST(req: NextRequest) {
       .insert({
         booking_id: bookingId,
         user_id: user.id,
-        amount: booking.gigs.price,
+        amount: Number(bookingGig.price),
         method: "mpesa",
         status: "pending",
         phone_number: phoneNumber,
         metadata: {
           merchant_request_id: stkResponse.MerchantRequestID,
           checkout_request_id: stkResponse.CheckoutRequestID,
-          gig_title: booking.gigs.title,
-          seller_id: booking.gigs.posted_by,
+          gig_title: bookingGig.title,
+          seller_id: bookingGig.posted_by,
         },
       })
       .select()
@@ -128,10 +165,31 @@ export async function POST(req: NextRequest) {
       checkoutRequestId: stkResponse.CheckoutRequestID,
       paymentId: payment?.id,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Payment initiation error:", error);
+
+    if (axios.isAxiosError(error)) {
+      const mpesaMessage =
+        (error.response?.data as { errorMessage?: string; ResponseDescription?: string })
+          ?.errorMessage ||
+        (error.response?.data as { errorMessage?: string; ResponseDescription?: string })
+          ?.ResponseDescription ||
+        error.message;
+
+      return NextResponse.json(
+        {
+          error: "M-Pesa request failed",
+          details: mpesaMessage,
+        },
+        { status: error.response?.status || 400 },
+      );
+    }
+
     return NextResponse.json(
-      { error: "Internal server error", details: error.message },
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 },
     );
   }

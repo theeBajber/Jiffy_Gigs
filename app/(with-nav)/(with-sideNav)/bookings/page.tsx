@@ -5,14 +5,15 @@ import { BookingCard } from "@/app/ui/cards";
 import { poppins } from "@/app/ui/fonts";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 type BookingView = "made" | "provided";
-type FilterStatus = "all" | "active" | "completed";
+type FilterStatus = "all" | "pending" | "active" | "completed";
 
 interface Booking {
   id: string;
-  status: "active" | "completed" | "cancelled";
-  payment_status: "pending" | "paid";
+  status: "pending" | "active" | "completed" | "cancelled";
+  payment_status: "pending" | "paid" | "completed" | "failed";
   created_at: string;
   preferred_submission?: string;
   special_requirements?: string;
@@ -31,6 +32,7 @@ interface Booking {
 }
 
 export default function Bookings() {
+  const router = useRouter();
   const [view, setView] = useState<BookingView>("made");
   const [filter, setFilter] = useState<FilterStatus>("all");
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -51,8 +53,8 @@ export default function Bookings() {
         ...(data.bookings_i_made || []),
         ...(data.gigs_i_provide || []),
       ]);
-    } catch (err: any) {
-      console.error(err.message);
+    } catch (err: unknown) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -61,11 +63,36 @@ export default function Bookings() {
   const handleCancel = async (id: string) => {
     if (!confirm("Cancel this booking?")) return;
     try {
-      const res = await fetch(`/api/bookings?id=${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to cancel");
-      setBookings((prev) => prev.filter((b) => b.id !== id));
+      const res = await fetch("/api/bookings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: id, action: "cancel" }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to cancel");
+
+      setBookings((prev) =>
+        prev.map((b) => (b.id === id ? { ...b, status: "cancelled" } : b)),
+      );
     } catch {
       alert("Failed to cancel booking");
+    }
+  };
+
+  const handleAccept = async (id: string) => {
+    try {
+      const res = await fetch("/api/bookings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: id, action: "accept" }),
+      });
+      if (!res.ok) throw new Error("Failed to accept booking");
+      setBookings((prev) =>
+        prev.map((b) => (b.id === id ? { ...b, status: "active" } : b)),
+      );
+    } catch {
+      alert("Failed to accept booking");
     }
   };
 
@@ -75,31 +102,23 @@ export default function Bookings() {
       const res = await fetch("/api/bookings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: id, status: "completed" }),
+        body: JSON.stringify({ bookingId: id, action: "complete" }),
       });
       if (!res.ok) throw new Error("Failed to update");
       setBookings((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, status: "completed" } : b)),
+        prev.map((b) =>
+          b.id === id
+            ? { ...b, status: "completed", payment_status: "pending" }
+            : b,
+        ),
       );
     } catch {
       alert("Failed to mark as done");
     }
   };
 
-  const handleInitiatePayment = async (id: string) => {
-    try {
-      const res = await fetch("/api/bookings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: id, payment_status: "paid" }),
-      });
-      if (!res.ok) throw new Error("Failed to update payment");
-      setBookings((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, payment_status: "paid" } : b)),
-      );
-    } catch {
-      alert("Failed to initiate payment");
-    }
+  const handlePay = (id: string) => {
+    router.push(`/checkout/${id}`);
   };
 
   const filtered = bookings.filter((b) => {
@@ -108,6 +127,9 @@ export default function Bookings() {
     return b.status === filter;
   });
 
+  const pendingCount = bookings.filter(
+    (b) => b.type === view && b.status === "pending",
+  ).length;
   const activeCount = bookings.filter(
     (b) => b.type === view && b.status === "active",
   ).length;
@@ -166,6 +188,28 @@ export default function Bookings() {
             All
             {filter === "all" && (
               <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-light" />
+            )}
+          </button>
+          <button
+            onClick={() => setFilter("pending")}
+            className={`pb-3 text-sm font-medium transition-colors relative ${
+              filter === "pending"
+                ? "text-primary-dark"
+                : "text-primary-light/70 hover:text-primary-light"
+            }`}
+          >
+            Pending
+            <span
+              className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
+                filter === "pending"
+                  ? "bg-primary text-white"
+                  : "bg-secondary/50 text-primary-light"
+              }`}
+            >
+              {pendingCount}
+            </span>
+            {filter === "pending" && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
             )}
           </button>
           <button
@@ -260,9 +304,10 @@ export default function Bookings() {
               cover={booking.gig.cover_url}
               per={booking.gig.per}
               isProvider={view === "provided"}
+              onAccept={() => handleAccept(booking.id)}
               onCancel={() => handleCancel(booking.id)}
               onMarkDone={() => handleMarkDone(booking.id)}
-              onInitiatePayment={() => handleInitiatePayment(booking.id)}
+              onPay={() => handlePay(booking.id)}
             />
           ))
         )}

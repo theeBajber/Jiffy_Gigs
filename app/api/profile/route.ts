@@ -38,11 +38,41 @@ export async function PATCH(request: Request) {
 
   try {
     const body = await request.json();
-    const { name, institution } = body;
+    const {
+      name,
+      institution,
+      profile_pic,
+      campus_email,
+      campus_verified,
+      verified_at,
+      notification_settings,
+      privacy_settings,
+    } = body;
+
+    const updates: Record<string, any> = {};
+
+    if (typeof name !== "undefined") updates.name = name;
+    if (typeof institution !== "undefined") updates.institution = institution;
+    if (typeof profile_pic !== "undefined") updates.profile_pic = profile_pic;
+    if (typeof campus_email !== "undefined") updates.campus_email = campus_email;
+    if (typeof campus_verified !== "undefined")
+      updates.campus_verified = campus_verified;
+    if (typeof verified_at !== "undefined") updates.verified_at = verified_at;
+    if (typeof notification_settings !== "undefined")
+      updates.notification_settings = notification_settings;
+    if (typeof privacy_settings !== "undefined")
+      updates.privacy_settings = privacy_settings;
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json(
+        { error: "No profile fields provided" },
+        { status: 400 },
+      );
+    }
 
     const { data, error } = await supabase
       .from("users")
-      .update({ name, institution })
+      .update(updates)
       .eq("id", user.id)
       .select()
       .single();
@@ -53,7 +83,10 @@ export async function PATCH(request: Request) {
     }
 
     return NextResponse.json(data);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unexpected error" },
+      { status: 500 },
+    );
   }
 }

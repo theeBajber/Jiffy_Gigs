@@ -47,7 +47,7 @@ export default async function GigDetails({
   const { data: gig, error } = await supabase
     .from("gigs")
     .select(
-      `*, categories(name), users:posted_by(name,profile_pic,institution, campus_verified)`,
+      `*, categories(name), users:posted_by(name,profile_pic,institution, campus_verified), bookings(status, payment_status)`,
     )
     .eq("id", id)
     .single();
@@ -56,8 +56,16 @@ export default async function GigDetails({
     notFound();
   }
   const transformedGig = transformGigData(gig as DatabaseGig);
-  const rating = 4.9;
-  const reviewCount = 12;
+  const isAvailable = !(gig.bookings || []).some(
+    (booking: { status?: string; payment_status?: string }) =>
+      booking?.status === "pending" ||
+      booking?.status === "active" ||
+      booking?.payment_status === "paid" ||
+      booking?.payment_status === "completed",
+  );
+  let rating = 0;
+  let reviewCount = 0;
+  let latestReviews: any[] = [];
   const subcategory = "Hair Grooming";
   const formattedPrice = new Intl.NumberFormat("en-KE", {
     style: "currency",
@@ -72,6 +80,36 @@ export default async function GigDetails({
 
     coverUrl = data.publicUrl;
   }
+
+  const { data: portfolios } = await supabase
+    .from("portfolios")
+    .select("id, file_path, file_name")
+    .eq("gig_id", id)
+    .order("uploaded_at", { ascending: false });
+
+  try {
+    const { data: reviews } = await supabase
+      .from("reviews")
+      .select("id, rating, comment, created_at, reviewer:users!reviewer_id(name)")
+      .eq("seller_id", gig.posted_by)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    latestReviews = reviews || [];
+    reviewCount = latestReviews.length;
+    rating =
+      reviewCount > 0
+        ? Number(
+            (
+              latestReviews.reduce((sum: number, r: any) => sum + r.rating, 0) /
+              reviewCount
+            ).toFixed(1),
+          )
+        : 0;
+  } catch {
+    // no-op fallback for environments without reviews table
+  }
+
   return (
     <main className="w-full flex p-8 mt-18 gap-16 justify-center">
       <div className="w-1/2 flex flex-col p-2 gap-6">
@@ -91,13 +129,24 @@ export default async function GigDetails({
         <h2 className={`${poppins.className} text-4xl font-bold`}>
           {gig.title}
         </h2>
+        <div>
+          <span
+            className={`text-xs font-bold uppercase tracking-wide px-3 py-1 rounded-full ${
+              isAvailable
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-rose-100 text-rose-700"
+            }`}
+          >
+            {isAvailable ? "Available" : "Taken"}
+          </span>
+        </div>
         <div className="w-full py-4 border-y border-primary-dark/50 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img className="rounded-full size-14" src={transformedGig.image} />
             <div className="flex flex-col">
               <h3 className="text-lg font-bold capitalize flex items-center gap-1">
                 {transformedGig.gigger}
-                {gig.users?.campus_verified || (
+                {gig.users?.campus_verified && (
                   <BadgeCheck className="size-5 text-primary-light" />
                 )}
               </h3>
@@ -108,19 +157,12 @@ export default async function GigDetails({
           </div>
           <div className="flex items-center gap-1">
             <StarIcon className="text-primary-light fill-primary-light size-4" />
-            <span className="font-bold">{rating}</span>
+            <span className="font-bold">{rating || "New"}</span>
             <span className="text-primary-dark/70">
               ({reviewCount} reviews)
             </span>
           </div>
         </div>
-        {/* <div className="flex items-center gap-2 text-primary-dark/70"> */}
-        {/*   {gig.skills?.map((tag: string, index: number) => ( */}
-        {/*     <div key={index} className="rounded-2xl border px-3 py-0.5 text-sm"> */}
-        {/*       {tag} */}
-        {/*     </div> */}
-        {/*   ))} */}
-        {/* </div> */}
         <div className="flex flex-col gap-2">
           <h3 className={`font-semibold text-lg ${poppins.className}`}>
             About this Gig
@@ -133,6 +175,60 @@ export default async function GigDetails({
             be scheduled at your convenience. Feel free to reach out with any
             questions before booking.
           </p>
+        </div>
+        {Array.isArray(portfolios) && portfolios.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <h3 className={`font-semibold text-lg ${poppins.className}`}>
+              Portfolio
+            </h3>
+            <div className="grid grid-cols-3 gap-3">
+              {portfolios.map((item, index: number) => {
+                const { data } = supabase.storage
+                  .from("GigPortfolio")
+                  .getPublicUrl(item.file_path);
+
+                return (
+                  <a
+                    key={item.id || index}
+                    href={data.publicUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block h-28 overflow-hidden rounded-lg border bg-white"
+                  >
+                    <img
+                      src={data.publicUrl}
+                      alt={item.file_name || `Portfolio ${index + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <div className="flex flex-col gap-3">
+          <h3 className={`font-semibold text-lg ${poppins.className}`}>
+            Recent Reviews
+          </h3>
+          {latestReviews.length === 0 ? (
+            <p className="text-primary-dark/60 text-sm">No reviews yet.</p>
+          ) : (
+            latestReviews.slice(0, 3).map((review: any) => (
+              <div key={review.id} className="rounded-lg border p-3 bg-white">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-sm">
+                    {review.reviewer?.name || "Anonymous"}
+                  </p>
+                  <p className="text-xs text-primary-dark/60">
+                    {review.rating}/5
+                  </p>
+                </div>
+                <p className="text-sm text-primary-dark/70 mt-1">
+                  {review.comment || "No written comment."}
+                </p>
+              </div>
+            ))
+          )}
         </div>
         <div className="flex flex-col gap-2">
           <h3 className={`font-semibold text-lg ${poppins.className}`}>
@@ -166,13 +262,14 @@ export default async function GigDetails({
           title={gig.title}
           price={gig.price}
           cover={coverUrl}
+          isAvailable={isAvailable}
         />
         <Link
-          href={"/chat"}
+          href={`/chat/${gig.posted_by}`}
           className="w-full py-2 bg-primary-light/20 rounded-lg text-lg font-bold flex items-center justify-center gap-2"
         >
           <MessageCircleMore />
-          Chat with Hafidhy
+          Chat with {transformedGig.gigger}
         </Link>
       </div>
     </main>

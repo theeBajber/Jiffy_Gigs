@@ -33,11 +33,16 @@ import { GigCard } from "@/app/ui/cards";
 import { createGig } from "@/app/hooks/gigsPost";
 
 export default function PostGig() {
+  const MAX_FILE_SIZE_MB = 5;
+  const MAX_PORTFOLIO_FILES = 6;
+  const MAX_TOTAL_UPLOAD_MB = 15;
+
   const [formData, setFormData] = useState({
     gigTitle: "",
     category: "Academic Support",
     description: "",
     budget: "",
+    pricingType: "gig",
     location: "",
     cover: null as File | null,
     qualifications: "",
@@ -78,6 +83,46 @@ export default function PostGig() {
   };
   const handlePortfolioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const invalidType = files.find(
+      (file) => !file.type.match(/image\/(png|jpg|jpeg|webp)/),
+    );
+    if (invalidType) {
+      alert("Portfolio files must be png, jpg, jpeg, or webp images.");
+      return;
+    }
+
+    const oversized = files.find(
+      (file) => file.size > MAX_FILE_SIZE_MB * 1024 * 1024,
+    );
+    if (oversized) {
+      alert(`Each portfolio file must be less than ${MAX_FILE_SIZE_MB}MB.`);
+      return;
+    }
+
+    if (portfolioFiles.length + files.length > MAX_PORTFOLIO_FILES) {
+      alert(`You can upload up to ${MAX_PORTFOLIO_FILES} portfolio files.`);
+      return;
+    }
+
+    const currentTotalBytes = portfolioFiles.reduce(
+      (sum, file) => sum + file.size,
+      0,
+    );
+    const incomingTotalBytes = files.reduce((sum, file) => sum + file.size, 0);
+    const coverBytes = cover?.size || 0;
+
+    if (
+      currentTotalBytes + incomingTotalBytes + coverBytes >
+      MAX_TOTAL_UPLOAD_MB * 1024 * 1024
+    ) {
+      alert(
+        `Total upload size (cover + portfolio) must be under ${MAX_TOTAL_UPLOAD_MB}MB.`,
+      );
+      return;
+    }
+
     setPortfolioFiles([...portfolioFiles, ...files]);
   };
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -195,9 +240,11 @@ export default function PostGig() {
     fd.append("title", formData.gigTitle);
     fd.append("description", formData.description);
     fd.append("price", formData.budget);
+  fd.append("per", formData.pricingType);
     fd.append("location", formData.location);
     fd.append("category", formData.category);
     fd.append("qualifications", formData.qualifications);
+  formData.skills.forEach((skill) => fd.append("skills[]", skill));
 
     if (cover) {
       fd.append("cover", cover);
@@ -368,6 +415,23 @@ export default function PostGig() {
                   value={formData.budget}
                 />
               </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="font-bold text-sm" htmlFor="pricingType">
+                Pricing Type
+              </label>
+              <select
+                id="pricingType"
+                value={formData.pricingType}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, pricingType: e.target.value }))
+                }
+                className="w-full border-2 rounded-lg border-primary-light/30 focus:border-primary-light p-2 outline-none"
+              >
+                <option value="gig">Per Gig</option>
+                <option value="hour">Per Hour</option>
+                <option value="project">Per Project</option>
+              </select>
             </div>
             <div className="flex flex-col gap-2">
               <label className="font-bold text-sm" htmlFor="location">
@@ -604,6 +668,7 @@ export default function PostGig() {
                 image={
                   formData.cover ? URL.createObjectURL(formData.cover) : ""
                 }
+                isAvailable={true}
               />
             </div>
           </div>
@@ -631,7 +696,7 @@ export default function PostGig() {
                   Pricing
                 </div>
                 <div className="font-semibold text-primary-dark">
-                  {`Ksh ${formData.budget}`}
+                  {`Ksh ${formData.budget} / ${formData.pricingType}`}
                 </div>
               </div>
               <div className="w-full flex-col gap-1">

@@ -6,7 +6,8 @@ export async function GET() {
   const { data, error } = await supabase.from("gigs").select(`
       *,
       categories(name),
-      users:posted_by(name, profile_pic)
+      users:posted_by(name, profile_pic),
+      bookings(status, payment_status)
     `);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

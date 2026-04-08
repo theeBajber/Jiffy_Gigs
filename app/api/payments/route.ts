@@ -36,11 +36,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Already paid" }, { status: 400 });
     }
 
-    // Calculate fees
-    const serviceFee = booking.gig.price;
-    const tax = Math.round(serviceFee * 0.08);
-    const platformFee = 5;
-    const total = serviceFee + tax + platformFee;
+  // Direct payment model (0% platform commission)
+  const total = booking.gig.price;
 
     // Create payment record
     const { data: payment, error: paymentError } = await supabase
@@ -53,9 +50,8 @@ export async function POST(req: Request) {
         status: "pending",
         phone_number: phoneNumber || null,
         metadata: {
-          service_fee: serviceFee,
-          tax: tax,
-          platform_fee: platformFee,
+          direct_payment: true,
+          seller_id: booking.gig.posted_by,
         },
       })
       .select()
@@ -87,9 +83,8 @@ export async function POST(req: Request) {
           : "Processing card payment...",
       total,
       breakdown: {
-        serviceFee,
-        tax,
-        platformFee,
+        serviceFee: total,
+        platformFee: 0,
         total,
       },
     });
@@ -107,14 +102,34 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const paymentId = searchParams.get("id");
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   if (!paymentId) {
-    return NextResponse.json({ error: "Payment ID required" }, { status: 400 });
+    const { data: payments, error: listError } = await supabase
+      .from("payments")
+      .select("id, amount, method, status, created_at, completed_at, booking_id")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (listError) {
+      return NextResponse.json({ error: listError.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ payments: payments || [] });
   }
 
   const { data: payment, error } = await supabase
     .from("payments")
     .select("*, booking:bookings(gig:gigs(title))")
     .eq("id", paymentId)
+    .eq("user_id", user.id)
     .single();
 
   if (error || !payment) {

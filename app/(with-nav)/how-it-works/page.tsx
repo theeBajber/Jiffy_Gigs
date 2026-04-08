@@ -288,7 +288,7 @@ export default function HowItWorks() {
       </section>
 
       {/* CTA Section */}
-      <section className="relative mx-auto mt-32 w-full max-w-7xl overflow-hidden rounded-[2rem] bg-primary-light px-6 py-20 text-center mb-12">
+      <section className="relative mx-auto mt-32 w-full max-w-7xl overflow-hidden rounded-4xl bg-primary-light px-6 py-20 text-center mb-12">
         {/* Decorative circles */}
         <div className="absolute -left-24 -top-24 h-64 w-64 rounded-full bg-white/10 blur-3xl"></div>
         <div className="absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-black/10 blur-3xl"></div>

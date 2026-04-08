@@ -20,6 +20,7 @@ export default function BookingModal({
 }) {
   const [date, setDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -28,6 +29,10 @@ export default function BookingModal({
   const handleConfirm = async () => {
     try {
       setLoading(true);
+
+      if (!phoneNumber.trim()) {
+        throw new Error("Enter your M-Pesa phone number");
+      }
 
       const res = await fetch("/api/bookings", {
         method: "POST",
@@ -44,11 +49,32 @@ export default function BookingModal({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      alert("Booking successful!");
+      if (!data?.bookingId) {
+        throw new Error("Booking created but payment could not be started");
+      }
+
+      const paymentRes = await fetch("/api/payments/initiate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          bookingId: data.bookingId,
+          phoneNumber,
+        }),
+      });
+
+      const paymentData = await paymentRes.json();
+      if (!paymentRes.ok) {
+        throw new Error(paymentData.error || "Failed to initiate M-Pesa");
+      }
+
+      alert("Booking successful! M-Pesa prompt sent to your phone.");
       onCloseAction();
       router.push("/bookings");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Booking failed";
+      alert(message);
     } finally {
       setLoading(false);
     }
@@ -71,7 +97,11 @@ export default function BookingModal({
           <div className="flex gap-4 p-4 bg-slate-50 rounded-xl">
             <div className="h-20 w-20 rounded-lg overflow-hidden bg-slate-200">
               {cover && (
-                <img src={cover} className="h-full w-full object-cover" />
+                <img
+                  src={cover}
+                  alt={title}
+                  className="h-full w-full object-cover"
+                />
               )}
             </div>
 
@@ -107,6 +137,21 @@ export default function BookingModal({
             />
           </div>
 
+          {/* Phone Number */}
+          <div>
+            <label className="text-sm font-semibold">M-Pesa Phone Number</label>
+            <input
+              type="tel"
+              className="w-full mt-2 p-2 border rounded-lg"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              placeholder="07XX XXX XXX or 2547XX XXX XXX"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              You&apos;ll receive an STK push to approve payment.
+            </p>
+          </div>
+
           {/* Price */}
           <div className="border-t pt-4">
             <div className="flex justify-between font-bold text-lg">
@@ -130,7 +175,7 @@ export default function BookingModal({
             disabled={loading}
             className="flex-1 bg-primary-light text-white rounded-lg py-2"
           >
-            {loading ? "Processing..." : `Confirm`}
+            {loading ? "Processing..." : `Book & Pay with M-Pesa`}
           </button>
         </div>
       </div>

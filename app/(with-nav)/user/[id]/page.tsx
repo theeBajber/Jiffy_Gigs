@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   MapPin,
   Briefcase,
-  Star,
   MessageCircle,
   Grid3x3,
   ArrowLeft,
@@ -14,6 +13,18 @@ import {
 
 type PageProps = {
   params: { id: string };
+};
+
+type PublicGig = {
+  id: string;
+  title: string;
+  price: number;
+  per: string;
+  cover: string | null;
+  cover_url: string | null;
+  is_available: boolean;
+  categories?: { name: string } | { name: string }[] | null;
+  bookings?: { status?: string; payment_status?: string }[];
 };
 
 export default async function PublicProfile({ params }: PageProps) {
@@ -31,12 +42,38 @@ export default async function PublicProfile({ params }: PageProps) {
   }
 
   // Fetch user's active gigs
-  const { data: gigs } = await supabase
+  const { data: gigsData, error: gigsError } = await supabase
     .from("gigs")
-    .select("id, title, price, per, cover, categories(name)")
+    .select("id, title, price, per, cover, categories(name), bookings(status, payment_status)")
     .eq("posted_by", params.id)
-    .eq("status", "active")
     .order("created_at", { ascending: false });
+
+  if (gigsError) {
+    console.error("Failed to load user gigs:", gigsError.message);
+  }
+
+  const gigs: PublicGig[] = (gigsData || []).map((gig) => {
+    let coverUrl: string | null = null;
+
+    if (gig.cover) {
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("GigCovers").getPublicUrl(gig.cover);
+      coverUrl = publicUrl;
+    }
+
+    return {
+      ...gig,
+      cover_url: coverUrl,
+      is_available: !(gig.bookings || []).some(
+        (booking) =>
+          booking?.status === "pending" ||
+          booking?.status === "active" ||
+          booking?.payment_status === "paid" ||
+          booking?.payment_status === "completed",
+      ),
+    };
+  });
 
   // Calculate stats
   const { count: totalGigs } = await supabase
@@ -57,7 +94,7 @@ export default async function PublicProfile({ params }: PageProps) {
 
       {/* Profile Header */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="h-32 bg-gradient-to-r from-primary-light to-primary-dark" />
+  <div className="h-32 bg-linear-to-r from-primary-light to-primary-dark" />
 
         <div className="px-8 pb-8">
           <div className="relative flex justify-between items-end -mt-12 mb-6">
@@ -72,7 +109,7 @@ export default async function PublicProfile({ params }: PageProps) {
                     className="object-cover w-full h-full"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-primary-light to-primary-dark flex items-center justify-center text-white text-2xl font-bold">
+                  <div className="w-full h-full bg-linear-to-br from-primary-light to-primary-dark flex items-center justify-center text-white text-2xl font-bold">
                     {profile.name[0]?.toUpperCase()}
                   </div>
                 )}
@@ -137,16 +174,16 @@ export default async function PublicProfile({ params }: PageProps) {
 
         {gigs && gigs.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {gigs.map((gig: any) => (
+            {gigs.map((gig) => (
               <Link
                 key={gig.id}
                 href={`/gigs/${gig.id}`}
                 className="group bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-lg transition-all"
               >
                 <div className="aspect-video relative bg-slate-100">
-                  {gig.cover ? (
+                  {gig.cover_url ? (
                     <Image
-                      src={gig.cover}
+                      src={gig.cover_url}
                       alt={gig.title}
                       fill
                       className="object-cover group-hover:scale-105 transition-transform duration-500"
@@ -158,6 +195,17 @@ export default async function PublicProfile({ params }: PageProps) {
                   )}
                 </div>
                 <div className="p-5">
+                  <div className="mb-2">
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full ${
+                        gig.is_available
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-rose-100 text-rose-700"
+                      }`}
+                    >
+                      {gig.is_available ? "Available" : "Taken"}
+                    </span>
+                  </div>
                   <h3 className="font-bold text-slate-900 mb-2 line-clamp-1">
                     {gig.title}
                   </h3>
@@ -166,7 +214,9 @@ export default async function PublicProfile({ params }: PageProps) {
                       KSh {gig.price}/{gig.per}
                     </span>
                     <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
-                      {gig.categories?.name}
+                      {Array.isArray(gig.categories)
+                        ? gig.categories[0]?.name
+                        : gig.categories?.name}
                     </span>
                   </div>
                 </div>

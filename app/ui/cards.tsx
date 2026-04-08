@@ -58,6 +58,7 @@ export const GigCard = ({
   charges,
   image,
   proximity,
+  isAvailable = true,
 }: {
   id: string;
   title: string;
@@ -70,6 +71,7 @@ export const GigCard = ({
   charges: string;
   image: string;
   proximity: string;
+  isAvailable?: boolean;
 }) => {
   return (
     <Link href={`/gigs/${id}`} className="block h-full">
@@ -82,6 +84,15 @@ export const GigCard = ({
           />
           <span className="absolute right-3 top-3 rounded-full bg-white px-3 py-1 text-xs font-bold text-primary shadow-sm">
             {category}
+          </span>
+          <span
+            className={`absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold shadow-sm ${
+              isAvailable
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-rose-100 text-rose-700"
+            }`}
+          >
+            {isAvailable ? "Available" : "Taken"}
           </span>
         </div>
         <div className="flex flex-1 flex-col p-5">
@@ -159,25 +170,28 @@ export function BookingCard({
   payment_status,
   per = "gig",
   isProvider = false,
+  onAccept,
   onCancel,
   onMarkDone,
-  onInitiatePayment,
+  onPay,
 }: {
   clientName: string;
   title: string;
   amount: number;
   id: string;
-  status: "active" | "completed" | "cancelled";
+  status: "pending" | "active" | "completed" | "cancelled";
   cover?: string;
-  payment_status: "pending" | "paid";
+  payment_status: "pending" | "paid" | "completed" | "failed";
   per?: string;
   isProvider?: boolean;
+  onAccept?: () => void;
   onCancel?: () => void;
   onMarkDone?: () => void;
-  onInitiatePayment?: () => void;
+  onPay?: () => void;
 }) {
   const isCompleted = status === "completed";
-  const isPaid = payment_status === "paid";
+  const isPaid = ["paid", "completed"].includes(payment_status);
+  const isPending = status === "pending";
   const isActive = status === "active";
   return (
     <div className="flex w-full justify-between rounded-xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-md">
@@ -202,6 +216,8 @@ export function BookingCard({
             >
               {isCompleted
                 ? "Completed"
+                : isPending
+                  ? "Pending Acceptance"
                 : isActive
                   ? "In Progress"
                   : "Cancelled"}
@@ -231,23 +247,32 @@ export function BookingCard({
       {/* Actions */}
       <div className="flex items-center gap-2">
         {/* Provider actions */}
+        {isProvider && isPending && (
+          <button
+            onClick={onAccept}
+            className="px-3 py-1.5 rounded-lg bg-primary-light text-white text-sm font-medium hover:bg-primary-light/90 transition-colors"
+          >
+            Accept
+          </button>
+        )}
+
         {isProvider && isActive && (
           <>
             <button
               onClick={onMarkDone}
               className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
             >
-              Mark Done
+              Mark Complete
             </button>
           </>
         )}
 
-        {isProvider && isCompleted && !isPaid && (
+        {!isProvider && isCompleted && !isPaid && (
           <button
-            onClick={onInitiatePayment}
+            onClick={onPay}
             className="px-3 py-1.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
           >
-            Initiate Payment
+            Proceed to Checkout
           </button>
         )}
 

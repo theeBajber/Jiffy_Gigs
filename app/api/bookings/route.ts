@@ -2,6 +2,29 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 
+async function createNotification(
+  supabase: {
+    from: (
+      table: string,
+    ) => {
+      insert: (payload: unknown) => unknown;
+    };
+  },
+  payload: {
+    user_id: string;
+    type: string;
+    title: string;
+    message: string;
+    metadata?: Record<string, unknown>;
+  },
+) {
+  try {
+    await supabase.from("notifications").insert(payload);
+  } catch {
+    // Best-effort; do not fail booking flow if notifications table is absent.
+  }
+}
+
 export async function POST(req: Request) {
   const supabase = await createServerSupabaseClient();
   const { gigId, date, notes } = await req.json();
@@ -15,7 +38,7 @@ export async function POST(req: Request) {
   // Check if booking own gig
   const { data: gig } = await supabase
     .from("gigs")
-    .select("posted_by")
+    .select("id, title, posted_by")
     .eq("id", gigId)
     .single();
 
@@ -28,32 +51,65 @@ export async function POST(req: Request) {
 
   const { data: existing } = await supabase
     .from("bookings")
-    .select("*")
+    .select("id, status, payment_status")
     .eq("user_id", user.id)
     .eq("gig_id", gigId)
-    .single();
+    .maybeSingle();
 
   if (existing) {
-    return NextResponse.json(
-      { error: "Already booked this gig" },
-      { status: 409 },
-    );
+    if (["paid", "completed"].includes(existing.payment_status)) {
+      return NextResponse.json(
+        { error: "This gig booking is already paid" },
+        { status: 409 },
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      existing: true,
+      status: existing.status,
+      bookingId: existing.id,
+      gigTitle: gig?.title || "Untitled gig",
+      amount: null,
+    });
   }
 
-  const { error } = await supabase.from("bookings").insert({
-    user_id: user.id,
-    gig_id: gigId,
-    preferred_submission: date || null,
-    special_requirements: notes || null,
-    status: "active",
-    payment_status: "pending",
-  });
+  const { data: createdBooking, error } = await supabase
+    .from("bookings")
+    .insert({
+      user_id: user.id,
+      gig_id: gigId,
+      preferred_submission: date || null,
+      special_requirements: notes || null,
+      status: "pending",
+      payment_status: "pending",
+    })
+    .select("id, gig:gigs(title, price)")
+    .single();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ success: true });
+  await createNotification(supabase, {
+    user_id: gig?.posted_by,
+    type: "booking_requested",
+    title: "New booking request",
+    message: `A student requested your gig: ${gig?.title || "Untitled gig"}`,
+    metadata: { gig_id: gigId },
+  });
+
+  const gigInfo = Array.isArray(createdBooking?.gig)
+    ? createdBooking?.gig[0]
+    : createdBooking?.gig;
+
+  return NextResponse.json({
+    success: true,
+    status: "pending",
+    bookingId: createdBooking?.id,
+    gigTitle: gigInfo?.title || gig?.title || "Untitled gig",
+    amount: gigInfo?.price || null,
+  });
 }
 
 export async function GET() {
@@ -125,9 +181,49 @@ export async function GET() {
   }
 
   // Process with image URLs
-  const processBookings = (bookings: any[], type: "made" | "provided") => {
+  const processBookings = (
+    bookings: Array<{
+      id: string;
+      status: string;
+      payment_status: string;
+      created_at: string;
+      preferred_submission: string | null;
+      special_requirements: string | null;
+      gig?:
+        | {
+            id?: string;
+            title?: string;
+            price?: number;
+            cover?: string;
+            per?: string;
+            provider?: Array<{
+              name?: string;
+              email?: string;
+              profile_pic?: string;
+            }>;
+          }
+        | Array<{
+            id?: string;
+            title?: string;
+            price?: number;
+            cover?: string;
+            per?: string;
+            provider?: Array<{
+              name?: string;
+              email?: string;
+              profile_pic?: string;
+            }>;
+          }>;
+      client?: Array<{
+        name?: string;
+        email?: string;
+        profile_pic?: string;
+      }>;
+    }>,
+    type: "made" | "provided",
+  ) => {
     return bookings.map((booking) => {
-      const gig = booking.gig;
+  const gig = Array.isArray(booking.gig) ? booking.gig[0] : booking.gig;
       let coverUrl = null;
 
       if (gig?.cover) {
@@ -188,7 +284,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { bookingId, status, payment_status } = await req.json();
+  const { bookingId, status, payment_status, action } = await req.json();
 
   // Verify provider owns this booking's gig
   const { data: booking } = await supabase
@@ -206,14 +302,71 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
 
-  const isProvider = booking.gig?.[0]?.posted_by === user.id;
+  const gigData = Array.isArray(booking.gig) ? booking.gig[0] : booking.gig;
+  const isProvider = gigData?.posted_by === user.id;
   const isClient = booking.user_id === user.id;
 
   // Only provider can update status to completed or payment
   // Client can only cancel their own booking if not completed
-  const updates: any = {};
+  const updates: Record<string, string> = {};
+  const normalizedAction =
+    action ||
+    (status === "active"
+      ? "accept"
+      : status === "completed"
+        ? "complete"
+        : status === "cancelled"
+          ? "cancel"
+          : null);
 
-  if (status) {
+  if (normalizedAction === "accept") {
+    if (!isProvider || booking.status !== "pending") {
+      return NextResponse.json(
+        { error: "Only provider can accept pending bookings" },
+        { status: 403 },
+      );
+    }
+
+    updates.status = "active";
+  }
+
+  if (normalizedAction === "complete") {
+    if (!isProvider || booking.status !== "active") {
+      return NextResponse.json(
+        { error: "Only provider can complete active bookings" },
+        { status: 403 },
+      );
+    }
+
+    updates.status = "completed";
+    updates.payment_status = "pending";
+  }
+
+  if (normalizedAction === "cancel") {
+    if (isProvider && ["pending", "active"].includes(booking.status)) {
+      if (["paid", "completed"].includes(booking.payment_status)) {
+        return NextResponse.json(
+          { error: "Cannot cancel a paid booking" },
+          { status: 400 },
+        );
+      }
+
+      updates.status = "cancelled";
+    } else if (
+      isClient &&
+      ["pending", "active"].includes(booking.status) &&
+      !["paid", "completed"].includes(booking.payment_status)
+    ) {
+      updates.status = "cancelled";
+    } else {
+      return NextResponse.json(
+        { error: "Unauthorized action" },
+        { status: 403 },
+      );
+    }
+  }
+
+  if (status && !normalizedAction) {
     if (isProvider && ["completed", "cancelled"].includes(status)) {
       updates.status = status;
     } else if (
@@ -234,6 +387,13 @@ export async function PATCH(req: Request) {
     updates.payment_status = payment_status;
   }
 
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json(
+      { error: "No valid update supplied" },
+      { status: 400 },
+    );
+  }
+
   const { data: updated, error } = await supabase
     .from("bookings")
     .update(updates)
@@ -243,6 +403,29 @@ export async function PATCH(req: Request) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  if (normalizedAction === "accept") {
+    await createNotification(supabase, {
+      user_id: booking.user_id,
+      type: "booking_accepted",
+      title: "Booking accepted",
+      message: "Your booking has been accepted by the seller.",
+      metadata: { booking_id: bookingId },
+    });
+  }
+
+  if (normalizedAction === "complete") {
+    await createNotification(supabase, {
+      user_id: booking.user_id,
+      type: "payment_required",
+      title: "Action required: Complete payment",
+      message: "Your service is marked complete. Proceed to checkout.",
+      metadata: {
+        booking_id: bookingId,
+        checkout_url: `/checkout/${bookingId}`,
+      },
+    });
   }
 
   return NextResponse.json({ success: true, booking: updated });
@@ -273,6 +456,7 @@ export async function DELETE(req: Request) {
       `
       user_id,
       status,
+      payment_status,
       gig:gigs(posted_by)
     `,
     )
@@ -290,7 +474,7 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  // Don't allow deleting completed bookings
+  // DELETE is kept as fallback: convert to status update instead of hard delete.
   if (booking.status === "completed") {
     return NextResponse.json(
       { error: "Cannot delete completed bookings" },
@@ -298,9 +482,16 @@ export async function DELETE(req: Request) {
     );
   }
 
+  if (["paid", "completed"].includes(booking.payment_status || "")) {
+    return NextResponse.json(
+      { error: "Cannot delete a paid booking" },
+      { status: 400 },
+    );
+  }
+
   const { error } = await supabase
     .from("bookings")
-    .delete()
+    .update({ status: "cancelled" })
     .eq("id", bookingId);
 
   if (error) {

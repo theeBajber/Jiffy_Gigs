@@ -28,6 +28,23 @@ type Gig = {
   categories: { name: string } | null;
 };
 
+type RawGig = {
+  id: string;
+  title: string;
+  price: number;
+  per: string;
+  cover: string | null;
+  categories?: Array<{ name: string }>;
+};
+
+type ReviewItem = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  reviewer?: { name?: string } | null;
+};
+
 function getStorageUrl(bucket: string, path: string | null): string | null {
   if (!path) return null;
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
@@ -47,6 +64,7 @@ export default function MyProfile() {
     rating: 0,
     reviewCount: 0,
   });
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
 
   useEffect(() => {
     async function loadProfile() {
@@ -72,7 +90,7 @@ export default function MyProfile() {
         .order("created_at", { ascending: false });
 
       if (gigsData) {
-        const typedGigs: Gig[] = gigsData.map((gig: any) => ({
+        const typedGigs: Gig[] = (gigsData as RawGig[]).map((gig) => ({
           id: gig.id,
           title: gig.title,
           price: gig.price,
@@ -90,15 +108,38 @@ export default function MyProfile() {
 
       const { count: completedCount } = await supabase
         .from("bookings")
-        .select("*", { count: "exact", head: true })
-        .eq("gig_id", user.id)
+        .select("id, gig:gigs!inner(posted_by)", { count: "exact", head: true })
+        .eq("gigs.posted_by", user.id)
         .eq("status", "completed");
+
+      let rating = 0;
+      let reviewCount = 0;
+      const { data: reviewsData } = await supabase
+        .from("reviews")
+        .select("id, rating, comment, created_at, reviewer:users!reviewer_id(name)")
+        .eq("seller_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (reviewsData?.length) {
+        reviewCount = reviewsData.length;
+        rating = Number(
+          (
+            (reviewsData as ReviewItem[]).reduce(
+              (sum: number, r) => sum + r.rating,
+              0,
+            ) /
+            reviewCount
+          ).toFixed(1),
+        );
+        setReviews(reviewsData as ReviewItem[]);
+      }
 
       setStats({
         totalGigs: totalCount || 0,
         completedGigs: completedCount || 0,
-        rating: 4.9,
-        reviewCount: 12,
+        rating,
+        reviewCount,
       });
 
       setLoading(false);
@@ -393,39 +434,32 @@ export default function MyProfile() {
                   <h3 className="text-xl font-bold">Student Reviews</h3>
                   <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-1.5">
                     <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    <span className="font-bold">{stats.rating}</span>
+                    <span className="font-bold">{stats.rating || "New"}</span>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-4">
-                  {[
-                    {
-                      name: "Marcus T.",
-                      role: "Business Major",
-                      time: "2 days ago",
-                      text: "Great work! Delivered exactly what I needed.",
-                      rating: 5,
-                    },
-                    {
-                      name: "Sarah J.",
-                      role: "Comp Sci",
-                      time: "1 week ago",
-                      text: "Very professional and quick turnaround!",
-                      rating: 5,
-                    },
-                  ].map((review, idx) => (
+                  {reviews.length === 0 && (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-500">
+                      No reviews yet.
+                    </div>
+                  )}
+
+                  {reviews.map((review, idx) => (
                     <div
                       key={idx}
                       className="rounded-2xl border border-slate-200 bg-white p-6"
                     >
                       <div className="mb-3 flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-light font-bold text-white">
-                          {review.name[0]}
+                          {(review.reviewer?.name || "A")[0]}
                         </div>
                         <div className="flex-1">
-                          <h5 className="font-bold">{review.name}</h5>
+                          <h5 className="font-bold">
+                            {review.reviewer?.name || "Anonymous"}
+                          </h5>
                           <p className="text-xs text-slate-500">
-                            {review.role} • {review.time}
+                            {new Date(review.created_at).toLocaleDateString()}
                           </p>
                         </div>
                         <div className="flex">
@@ -438,7 +472,9 @@ export default function MyProfile() {
                           ))}
                         </div>
                       </div>
-                      <p className="text-slate-600 italic">{review.text}</p>
+                      <p className="text-slate-600 italic">
+                        {review.comment || "Great experience working together."}
+                      </p>
                     </div>
                   ))}
                 </div>

@@ -1,5 +1,5 @@
 // app/api/payments/callback/route.ts
-import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -20,31 +20,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const {
-      MerchantRequestID,
-      CheckoutRequestID,
-      ResultCode,
-      ResultDesc,
-      CallbackMetadata,
-    } = stkCallback;
+    const { CheckoutRequestID, ResultCode, ResultDesc, CallbackMetadata } =
+      stkCallback;
 
-    // Always acknowledge receipt to M-Pesa immediately
-    // Process asynchronously after responding
-    const response = NextResponse.json({
+    await processPaymentResult({
+      checkoutRequestId: CheckoutRequestID,
+      resultCode: Number(ResultCode),
+      resultDesc: ResultDesc,
+      callbackMetadata: CallbackMetadata,
+    });
+
+    return NextResponse.json({
       ResultCode: 0,
       ResultDesc: "Accepted",
     });
-
-    // Process payment result asynchronously
-    processPaymentResult({
-      merchantRequestId: MerchantRequestID,
-      checkoutRequestId: CheckoutRequestID,
-      resultCode: ResultCode,
-      resultDesc: ResultDesc,
-      callbackMetadata: CallbackMetadata,
-    }).catch(console.error);
-
-    return response;
   } catch (error) {
     console.error("Callback processing error:", error);
     // Still return success to M-Pesa to prevent retries
@@ -59,13 +48,11 @@ export async function POST(req: NextRequest) {
  * Process the payment result from M-Pesa callback
  */
 async function processPaymentResult({
-  merchantRequestId,
   checkoutRequestId,
   resultCode,
   resultDesc,
   callbackMetadata,
 }: {
-  merchantRequestId: string;
   checkoutRequestId: string;
   resultCode: number;
   resultDesc: string;
@@ -73,7 +60,7 @@ async function processPaymentResult({
     Item: Array<{ Name: string; Value: string | number }>;
   };
 }) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = createAdminSupabaseClient();
 
   // Find the payment record by checkout request ID
   const { data: payment, error: findError } = await supabase
@@ -84,6 +71,11 @@ async function processPaymentResult({
 
   if (findError || !payment) {
     console.error("Payment record not found for checkout:", checkoutRequestId);
+    return;
+  }
+
+  if (payment.status === "completed") {
+    // Idempotency: callback retry after successful processing.
     return;
   }
 
@@ -129,7 +121,7 @@ async function processPaymentResult({
       .from("bookings")
       .update({
         status: "completed",
-        payment_status: "completed",
+        payment_status: "paid",
       })
       .eq("id", payment.booking_id);
 
@@ -147,6 +139,22 @@ async function processPaymentResult({
           amount: amount,
         },
       });
+    }
+
+    // Prompt buyer to leave a review once payment is confirmed
+    try {
+      await supabase.from("notifications").insert({
+        user_id: payment.user_id,
+        type: "review_prompt",
+        title: "Rate your seller",
+        message: "Payment complete. Please leave a review for the completed gig.",
+        metadata: {
+          booking_id: payment.booking_id,
+          checkout_url: `/checkout/${payment.booking_id}`,
+        },
+      });
+    } catch {
+      // no-op
     }
 
     console.log(

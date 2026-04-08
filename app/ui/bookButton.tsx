@@ -8,21 +8,28 @@ export default function BookButton({
   title,
   price,
   cover,
+  isAvailable = true,
 }: {
   gigId: string;
   title: string;
   price: number;
   cover?: string;
+  isAvailable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
       <button
+        disabled={!isAvailable}
         onClick={() => setOpen(true)}
-        className="w-full py-2 bg-primary-light rounded-lg text-lg font-bold text-white"
+        className={`w-full py-2 rounded-lg text-lg font-bold text-white ${
+          isAvailable
+            ? "bg-primary-light"
+            : "bg-slate-400 cursor-not-allowed"
+        }`}
       >
-        Book Service
+        {isAvailable ? "Book Service" : "Currently Taken"}
       </button>
 
       <BookingModal

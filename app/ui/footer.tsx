@@ -1,4 +1,5 @@
 import { Facebook, Instagram, Linkedin, Twitch } from "lucide-react";
+import Link from "next/link";
 
 export default function Footer() {
   return (
@@ -7,7 +8,7 @@ export default function Footer() {
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <div className="p-1 bg-neutral-light rounded-full">
-              <img src="/logo.png" className="h-10" />
+              <img src="/logo.png" className="h-10" alt="Jiffy Gigs logo" />
             </div>
             <h1 className="text-neutral-light text-2xl font-extrabold">
               Jiffy Gigs
@@ -34,29 +35,32 @@ export default function Footer() {
         </div>
         <div className="flex flex-col gap-2 pr-4">
           <h3 className="text-xl font-bold text-neutral-light mb-1">Hustle</h3>
-          <a href="/" className="">
+          <Link href="/" className="">
             Home
-          </a>
-          <a href="/gigs" className="">
+          </Link>
+          <Link href="/gigs" className="">
             Browse Gigs
-          </a>
-          <a href="/post-gig" className="">
+          </Link>
+          <Link href="/post-gig" className="">
             Post a Gig
-          </a>
-          <a href="how-it-works" className="">
+          </Link>
+          <Link href="/how-it-works" className="">
             How It Works
-          </a>
+          </Link>
         </div>
       </div>
       <div className="flex justify-between p-4">
         <div className="">&copy; 2026 Jiffy Gigs</div>
         <div className="flex items-center gap-4 pr-4">
-          <a href="/legal" className="">
+          <Link href="/legal" className="">
             Legal
-          </a>
-          <a href="/support" className="">
+          </Link>
+          <Link href="/privacy" className="">
+            Privacy
+          </Link>
+          <Link href="/support" className="">
             Support
-          </a>
+          </Link>
         </div>
       </div>
     </footer>

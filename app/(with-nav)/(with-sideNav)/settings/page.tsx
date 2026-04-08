@@ -30,6 +30,21 @@ type NotificationSettings = {
   marketing_emails: boolean;
 };
 
+type PrivacySettings = {
+  profile_visibility: boolean;
+  show_email: boolean;
+};
+
+type PaymentItem = {
+  id: string;
+  amount: number;
+  method: string;
+  status: string;
+  created_at: string;
+  completed_at?: string | null;
+  booking_id: string;
+};
+
 const AVATARS_BUCKET = "Avatars";
 
 export default function Settings() {
@@ -53,7 +68,12 @@ export default function Settings() {
     message_notifications: true,
     marketing_emails: false,
   });
+  const [privacy, setPrivacy] = useState<PrivacySettings>({
+    profile_visibility: true,
+    show_email: false,
+  });
   const [activeTab, setActiveTab] = useState("account");
+  const [payments, setPayments] = useState<PaymentItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
     type: "success" | "error";
@@ -100,6 +120,12 @@ export default function Settings() {
         setProfilePic(getAvatarUrl(data.profile_pic));
         setCampusEmail(data.campus_email || "");
         setIsVerified(data.campus_verified || false);
+        if (data.notification_settings) {
+          setNotifications(data.notification_settings);
+        }
+        if (data.privacy_settings) {
+          setPrivacy(data.privacy_settings);
+        }
       } catch (error) {
         console.error("Error loading profile:", error);
         showMessage("error", "Failed to load profile data");
@@ -109,6 +135,23 @@ export default function Settings() {
     }
 
     loadUserData();
+  }, [user?.id]);
+
+  useEffect(() => {
+    async function loadPayments() {
+      if (!user?.id) return;
+
+      try {
+        const res = await fetch("/api/payments");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load payments");
+        setPayments(data.payments || []);
+      } catch (error) {
+        console.error("Payment history load failed:", error);
+      }
+    }
+
+    loadPayments();
   }, [user?.id]);
 
   useEffect(() => {
@@ -157,9 +200,12 @@ export default function Settings() {
       setStoredFileName(data.filePath);
       setProfilePic(data.publicUrl);
       showMessage("success", "Profile picture updated successfully");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Upload error:", error);
-      showMessage("error", error.message || "Failed to upload image");
+      showMessage(
+        "error",
+        error instanceof Error ? error.message : "Failed to upload image",
+      );
     } finally {
       setUploading(false);
     }
@@ -189,8 +235,11 @@ export default function Settings() {
       setStoredFileName(null);
       setProfilePic(null);
       showMessage("success", "Profile picture removed");
-    } catch (error: any) {
-      showMessage("error", error.message || "Failed to remove image");
+    } catch (error: unknown) {
+      showMessage(
+        "error",
+        error instanceof Error ? error.message : "Failed to remove image",
+      );
     }
   };
 
@@ -219,9 +268,12 @@ export default function Settings() {
 
       setUser({ ...user, name: displayName });
       showMessage("success", "Profile updated successfully");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Save failed:", error);
-      showMessage("error", error.message || "Failed to update profile");
+      showMessage(
+        "error",
+        error instanceof Error ? error.message : "Failed to update profile",
+      );
     } finally {
       setSaving(false);
     }
@@ -252,8 +304,11 @@ export default function Settings() {
       setNewPassword("");
       setConfirmPassword("");
       showMessage("success", "Password updated successfully");
-    } catch (error: any) {
-      showMessage("error", error.message || "Failed to update password");
+    } catch (error: unknown) {
+      showMessage(
+        "error",
+        error instanceof Error ? error.message : "Failed to update password",
+      );
     } finally {
       setSaving(false);
     }
@@ -284,8 +339,11 @@ export default function Settings() {
 
       setIsVerified(true);
       showMessage("success", "Campus email verified successfully!");
-    } catch (error: any) {
-      showMessage("error", error.message || "Verification failed");
+    } catch (error: unknown) {
+      showMessage(
+        "error",
+        error instanceof Error ? error.message : "Verification failed",
+      );
     } finally {
       setSaving(false);
     }
@@ -294,7 +352,37 @@ export default function Settings() {
   const handleNotificationChange = async (key: keyof NotificationSettings) => {
     const newSettings = { ...notifications, [key]: !notifications[key] };
     setNotifications(newSettings);
-    showMessage("success", "Notification preferences updated");
+
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notification_settings: newSettings }),
+      });
+
+      if (!res.ok) throw new Error("Failed to save notification settings");
+      showMessage("success", "Notification preferences updated");
+    } catch {
+      showMessage("error", "Failed to save notification preferences");
+    }
+  };
+
+  const handlePrivacyChange = async (key: keyof PrivacySettings) => {
+    const next = { ...privacy, [key]: !privacy[key] };
+    setPrivacy(next);
+
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ privacy_settings: next }),
+      });
+
+      if (!res.ok) throw new Error("Failed to save privacy settings");
+      showMessage("success", "Privacy settings updated");
+    } catch {
+      showMessage("error", "Failed to save privacy settings");
+    }
   };
 
   const handleSignOut = async () => {
@@ -350,7 +438,7 @@ export default function Settings() {
       {/* Main Content */}
       <div className="flex flex-col gap-8 md:flex-row">
         {/* Sidebar Navigation */}
-        <aside className="flex w-full shrink-0 flex-col gap-1 md:w-64">
+        <aside className="flex sticky top-0 h-fit w-full shrink-0 flex-col gap-1 md:w-64">
           <nav className="flex flex-col gap-1">
             {[
               { id: "account", icon: User, label: "Account" },
@@ -363,7 +451,7 @@ export default function Settings() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all ${
                   activeTab === tab.id
-                    ? "border-l-4 border-accent bg-white text-accent shadow-sm"
+                    ? "border-l-4 border-primary-light bg-white text-primary-light shadow-sm"
                     : "text-slate-600 hover:bg-slate-100"
                 }`}
               >
@@ -394,7 +482,7 @@ export default function Settings() {
                 <form onSubmit={handleSaveChanges}>
                   <div className="flex flex-col gap-6 p-6 sm:p-8">
                     <h2 className="flex items-center gap-2 text-lg font-bold">
-                      <BadgeCheck size={24} className="text-accent" />
+                      <BadgeCheck size={24} className="text-primary-link" />
                       General Information
                     </h2>
 
@@ -437,7 +525,7 @@ export default function Settings() {
                               type="button"
                               onClick={() => fileInputRef.current?.click()}
                               disabled={uploading}
-                              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                              className="flex items-center gap-2 rounded-lg bg-primary-light px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                             >
                               <Camera size={16} />
                               {uploading ? "Uploading..." : "Change photo"}
@@ -469,7 +557,7 @@ export default function Settings() {
                             type="text"
                             value={displayName}
                             onChange={(e) => setDisplayName(e.target.value)}
-                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm transition-all focus:border-accent focus:ring-accent focus:outline-none"
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm transition-all focus:border-primary-light focus:ring-primary-light focus:outline-none"
                             required
                           />
                         </div>
@@ -495,7 +583,7 @@ export default function Settings() {
                             <select
                               value={institution}
                               onChange={(e) => setInstitution(e.target.value)}
-                              className="w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm transition-all focus:border-accent focus:ring-accent focus:outline-none"
+                              className="w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm transition-all focus:border-primary-light focus:ring-primary-light focus:outline-none"
                             >
                               <option value="">Select your institution</option>
                               {institutions.map((inst) => (
@@ -518,7 +606,7 @@ export default function Settings() {
                     <button
                       type="submit"
                       disabled={saving}
-                      className="rounded-lg bg-primary px-6 py-2 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
+                      className="rounded-lg bg-primary-light px-6 py-2 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
                     >
                       {saving && <Loader2 className="animate-spin" size={16} />}
                       Save Changes
@@ -532,7 +620,7 @@ export default function Settings() {
                 <form onSubmit={handleUpdatePassword}>
                   <div className="flex flex-col gap-6 p-6 sm:p-8">
                     <h2 className="flex items-center gap-2 text-lg font-bold">
-                      <Lock size={24} className="text-accent" />
+                      <Lock size={24} className="text-primary-light" />
                       Security
                     </h2>
 
@@ -546,7 +634,7 @@ export default function Settings() {
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                           placeholder="Enter new password"
-                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm transition-all focus:border-accent focus:ring-accent focus:outline-none"
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm transition-all focus:border-primary-light focus:ring-primary-light focus:outline-none"
                           minLength={6}
                         />
                       </div>
@@ -560,7 +648,7 @@ export default function Settings() {
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           placeholder="Confirm new password"
-                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm transition-all focus:border-accent focus:ring-accent focus:outline-none"
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm transition-all focus:border-primary-light focus:ring-primary-light focus:outline-none"
                         />
                       </div>
                     </div>
@@ -570,7 +658,7 @@ export default function Settings() {
                     <button
                       type="submit"
                       disabled={saving || !newPassword || !confirmPassword}
-                      className="rounded-lg bg-primary px-6 py-2 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
+                      className="rounded-lg bg-primary-light px-6 py-2 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
                     >
                       {saving && <Loader2 className="animate-spin" size={16} />}
                       Update Password
@@ -583,7 +671,7 @@ export default function Settings() {
               <section className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <div className="flex flex-col gap-6 p-6 sm:p-8">
                   <h2 className="flex items-center gap-2 text-lg font-bold">
-                    <GraduationCap size={24} className="text-accent" />
+                    <GraduationCap size={24} className="text-primary-light" />
                     University Verification
                   </h2>
                   <p className="text-sm text-slate-500">
@@ -634,12 +722,12 @@ export default function Settings() {
                             value={campusEmail}
                             onChange={(e) => setCampusEmail(e.target.value)}
                             placeholder="your.name@university.ac.ke"
-                            className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm transition-all focus:border-accent focus:ring-accent focus:outline-none"
+                            className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm transition-all focus:border-primary-light focus:ring-primary-light focus:outline-none"
                           />
                           <button
                             onClick={handleSendVerification}
                             disabled={saving || !campusEmail}
-                            className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap"
+                            className="rounded-lg bg-primary-light px-4 py-2 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap"
                           >
                             {saving ? "Verifying..." : "Verify"}
                           </button>
@@ -660,7 +748,7 @@ export default function Settings() {
             <section className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-col gap-6 p-6 sm:p-8">
                 <h2 className="flex items-center gap-2 text-lg font-bold">
-                  <Bell size={24} className="text-accent" />
+                  <Bell size={24} className="text-primary-light" />
                   Notification Preferences
                 </h2>
 
@@ -705,7 +793,7 @@ export default function Settings() {
                         }
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                           notifications[item.key as keyof NotificationSettings]
-                            ? "bg-accent"
+                            ? "bg-primary-light"
                             : "bg-slate-200"
                         }`}
                       >
@@ -731,15 +819,42 @@ export default function Settings() {
             <section className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-col gap-6 p-6 sm:p-8">
                 <h2 className="flex items-center gap-2 text-lg font-bold">
-                  <CreditCard size={24} className="text-accent" />
+                  <CreditCard size={24} className="text-primary-light" />
                   Payment Methods
                 </h2>
-                <div className="text-center py-12 text-slate-500">
-                  <CreditCard size={48} className="mx-auto mb-4 opacity-50" />
-                  <p>Payment integration coming soon</p>
-                  <p className="text-sm mt-2">
-                    M-Pesa and card payments will be supported
-                  </p>
+
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                  ✅ Direct M-Pesa checkout is enabled (0% platform commission).
+                </div>
+
+                <div className="space-y-3">
+                  <h3 className="font-semibold">Recent Payments</h3>
+                  {payments.length === 0 ? (
+                    <p className="text-sm text-slate-500">No payments yet.</p>
+                  ) : (
+                    payments.map((payment) => (
+                      <div
+                        key={payment.id}
+                        className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between"
+                      >
+                        <div>
+                          <p className="font-semibold text-sm">
+                            Booking #{payment.booking_id.slice(0, 8)}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            {new Date(payment.created_at).toLocaleString()} • {" "}
+                            {payment.method.toUpperCase()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold">KES {payment.amount}</p>
+                          <p className="text-xs capitalize text-slate-500">
+                            {payment.status}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </section>
@@ -750,7 +865,7 @@ export default function Settings() {
             <section className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-col gap-6 p-6 sm:p-8">
                 <h2 className="flex items-center gap-2 text-lg font-bold">
-                  <Shield size={24} className="text-accent" />
+                  <Shield size={24} className="text-primary-light" />
                   Privacy Settings
                 </h2>
                 <div className="flex flex-col gap-4">
@@ -763,8 +878,13 @@ export default function Settings() {
                         Make your profile visible to other students
                       </p>
                     </div>
-                    <button className="relative inline-flex h-6 w-11 items-center rounded-full bg-accent">
-                      <span className="inline-block h-4 w-4 transform rounded-full bg-white translate-x-6" />
+                    <button
+                      onClick={() => handlePrivacyChange("profile_visibility")}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full ${privacy.profile_visibility ? "bg-primary-light" : "bg-slate-200"}`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white ${privacy.profile_visibility ? "translate-x-6" : "translate-x-1"}`}
+                      />
                     </button>
                   </div>
                   <div className="flex items-center justify-between py-3 border-b border-slate-100">
@@ -774,8 +894,13 @@ export default function Settings() {
                         Allow others to see your email address
                       </p>
                     </div>
-                    <button className="relative inline-flex h-6 w-11 items-center rounded-full bg-slate-200">
-                      <span className="inline-block h-4 w-4 transform rounded-full bg-white translate-x-1" />
+                    <button
+                      onClick={() => handlePrivacyChange("show_email")}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full ${privacy.show_email ? "bg-primary-light" : "bg-slate-200"}`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white ${privacy.show_email ? "translate-x-6" : "translate-x-1"}`}
+                      />
                     </button>
                   </div>
                 </div>

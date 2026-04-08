@@ -2,6 +2,18 @@ import { ArrowLeft, ArrowRight, Clipboard, Quote, Search } from "lucide-react";
 import { CurrencyDollarIcon, StarIcon } from "@heroicons/react/16/solid";
 import { poppins } from "../ui/fonts";
 import { ReasonCard } from "../ui/cards";
+import Link from "next/link";
+import { createServerSupabaseClient } from "@/lib/supabase-server";
+
+type HomeGig = {
+  id: string;
+  title: string;
+  price: number;
+  per: string;
+  cover: string | null;
+  bookings?: { status?: string; payment_status?: string }[];
+  categories?: { name: string } | { name: string }[] | null;
+};
 
 export default function Home() {
   return (
@@ -128,29 +140,40 @@ function Hero() {
   );
 }
 
-function Services() {
-  const services = [
-    {
-      title: "Tutoring",
-      gigs: ["Maths", "Programming", "Language", "Science"],
-      image: "/gigs/tutoring.jpg",
-    },
-    {
-      title: "Graphic Design",
-      gigs: ["Logo", "Posters", "Presentations"],
-      image: "/gigs/design.jpg",
-    },
-    {
-      title: "Coding",
-      gigs: ["Debugging", "Assignments", "Project Assistance"],
-      image: "/gigs/coding.jpg",
-    },
-    {
-      title: "Beauty & Grooming",
-      gigs: ["Haircuts", "Salon", "Braiding", "Makeup"],
-      image: "/gigs/grooming.jpg",
-    },
-  ];
+async function Services() {
+  const supabase = await createServerSupabaseClient();
+  const { data: gigs } = await supabase
+    .from("gigs")
+    .select("id, title, price, per, cover, categories(name), bookings(status, payment_status)")
+    .order("created_at", { ascending: false })
+    .limit(4);
+
+  const formattedGigs = ((gigs || []) as HomeGig[]).map((gig) => {
+    const {
+      data: { publicUrl },
+    } = gig.cover
+      ? supabase.storage.from("GigCovers").getPublicUrl(gig.cover)
+      : { data: { publicUrl: "/gigs/design.jpg" } };
+
+    return {
+      id: gig.id,
+      title: gig.title,
+      category: Array.isArray(gig.categories)
+        ? gig.categories[0]?.name
+        : gig.categories?.name,
+      price: gig.price,
+      per: gig.per,
+      image: publicUrl,
+      isAvailable: !(gig.bookings || []).some(
+        (booking) =>
+          booking?.status === "pending" ||
+          booking?.status === "active" ||
+          booking?.payment_status === "paid" ||
+          booking?.payment_status === "completed",
+      ),
+    };
+  });
+
   return (
     <section className="w-full flex flex-col p-8 gap-8 text-primary-dark">
       <div className="w-full flex justify-between items-center">
@@ -165,33 +188,58 @@ function Services() {
             campus peers.
           </p>
         </div>
-        <a
+        <Link
           href="/gigs"
           className="text-xl text-primary-dark font-semibold flex items-center gap-2 border-b"
         >
           View All
           <ArrowRight />
-        </a>
+        </Link>
       </div>
-      <div className="w-full min-h-120 rounded-2xl border grid grid-cols-2 overflow-hidden">
-        {services.map((service, index: number) => (
-          <div
-            className={`flex items-center w-full h-full ${index < 2 ? "" : "flex-row-reverse"}`}
-            key={index}
-          >
-            <div className="w-1/2 h-full flex flex-col p-4 gap-4">
-              <h3 className="text-2xl font-bold uppercase">{service.title}</h3>
-              <div className="flex items-center gap-2 flex-wrap">
-                {service.gigs.map((gig, idx: number) => (
-                  <a key={idx} className="rounded-2xl px-2 py-1 border text-sm">
-                    {gig}
-                  </a>
-                ))}
-              </div>
-            </div>
-            <img src={service.image} className="w-1/2 h-full" />
+      <div className="w-full rounded-2xl border overflow-hidden">
+        {formattedGigs.length === 0 ? (
+          <div className="p-8 text-center text-primary-dark/70">
+            No gigs available right now.
           </div>
-        ))}
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+            {formattedGigs.map((gig) => (
+              <Link
+                key={gig.id}
+                href={`/gigs/${gig.id}`}
+                className="group flex items-center border-b last:border-b-0 md:nth-last-[-n+2]:border-b-0 md:border-r md:nth-[2n]:border-r-0"
+              >
+                <div className="w-1/2 h-52 overflow-hidden bg-slate-100">
+                  <img
+                    src={gig.image}
+                    alt={gig.title}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                </div>
+                <div className="w-1/2 p-4 flex flex-col gap-2">
+                  <span className="text-xs uppercase font-semibold text-primary-dark/60">
+                    {gig.category || "General"}
+                  </span>
+                  <span
+                    className={`w-fit text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full ${
+                      gig.isAvailable
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-rose-100 text-rose-700"
+                    }`}
+                  >
+                    {gig.isAvailable ? "Available" : "Taken"}
+                  </span>
+                  <h3 className="text-lg font-bold leading-snug line-clamp-2">
+                    {gig.title}
+                  </h3>
+                  <p className="text-primary-light font-semibold">
+                    KSh {gig.price}/{gig.per}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -221,7 +269,7 @@ function Why() {
             text="Work on your terms. Post or grab gigs anytime — whether it’s a 2-hour study break or a weekend project. Your schedule, your hustle."
           />
           <ReasonCard
-            className="mr-16 bg-primary-light !text-neutral-light"
+            className="mr-16 bg-primary-light text-neutral-light!"
             icon="shield"
             title="Secure And Reliable"
             text="Verified peers, safe transactions, and no shady middlemen. Trust is built in, so you can focus on getting things done."

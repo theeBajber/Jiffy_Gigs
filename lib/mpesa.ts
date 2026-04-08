@@ -23,8 +23,12 @@ export interface STKPushResponse {
 }
 
 export async function getAccessToken(): Promise<string> {
-  const consumerKey = process.env.MPESA_CONSUMER_KEY!;
-  const consumerSecret = process.env.MPESA_CONSUMER_SECRET!;
+  const consumerKey = process.env.MPESA_CONSUMER_KEY;
+  const consumerSecret = process.env.MPESA_CONSUMER_SECRET;
+
+  if (!consumerKey || !consumerSecret) {
+    throw new Error("Missing MPESA_CONSUMER_KEY or MPESA_CONSUMER_SECRET");
+  }
 
   const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString(
     "base64",
@@ -55,8 +59,16 @@ export function getTimestamp(): string {
 }
 
 export function generatePassword(timestamp: string): string {
-  const shortcode = process.env.MPESA_SHORTCODE!;
-  const passkey = process.env.MPESA_PASSKEY!;
+  const shortcode = process.env.MPESA_SHORTCODE;
+  const passkey =
+    process.env.MPESA_PASSKEY ||
+    (process.env.MPESA_ENV !== "production"
+      ? "bfb279f9aa9bdbcf158e97dddf0"
+      : "");
+
+  if (!shortcode || !passkey) {
+    throw new Error("Missing MPESA_SHORTCODE or MPESA_PASSKEY");
+  }
 
   const password = `${shortcode}${passkey}${timestamp}`;
   return Buffer.from(password).toString("base64");
@@ -87,7 +99,11 @@ export async function initiateSTKPush({
   const accessToken = await getAccessToken();
   const timestamp = getTimestamp();
   const password = generatePassword(timestamp);
-  const shortcode = process.env.MPESA_SHORTCODE!;
+  const shortcode = process.env.MPESA_SHORTCODE;
+
+  if (!shortcode) {
+    throw new Error("Missing MPESA_SHORTCODE");
+  }
   const normalizedPhone = normalizePhone(phoneNumber);
 
   const wholeAmount = Math.round(amount);

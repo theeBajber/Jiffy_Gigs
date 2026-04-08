@@ -6,7 +6,6 @@ import {
   Bell,
   CircleUser,
   House,
-  LogOut,
   MessageCircle,
   NotebookPen,
   Settings2,
@@ -15,7 +14,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { logout } from "../hooks/auth";
 
-export function TopNav({ user }: { user: any }) {
+export function TopNav({
+  user,
+}: {
+  user: { id?: string } | null;
+}) {
   const { isVisible, isAtTop } = UseScrollDirection();
   const pathName = usePathname();
   const heroRoutes = ["/", "/gigs", "/legal", "/privacy"];
@@ -32,39 +35,39 @@ export function TopNav({ user }: { user: any }) {
         ${isAtTop && hasHero ? "w-[95%] p-1 top-4 bg-transparent!" : "top-0 w-full px-8 bg-linear-to-br to-primary-dark from-primary-light"}
       `}
     >
-      <a href="/" className="h-[75%] flex items-center gap-2">
+      <Link href="/" className="h-[75%] flex items-center gap-2">
         <div className="h-full bg-neutral-light aspect-square rounded-full flex items-center justify-center">
-          <img src={"/logo.png"} className="h-[85%]" />
+          <img src={"/logo.png"} className="h-[85%]" alt="Jiffy Gigs logo" />
         </div>
         <h1 className={`text-2xl font-bold uppercase ${poppins.className}`}>
           JiffyGigs
         </h1>
-      </a>
+      </Link>
       <div className="flex gap-4">
-        <a href="/gigs" className="font-semibold text-lg">
+        <Link href="/gigs" className="font-semibold text-lg">
           Browse Gigs
-        </a>
-        <a href="/post-gig" className="font-semibold text-lg">
+        </Link>
+        <Link href="/post-gig" className="font-semibold text-lg">
           Post a Gig
-        </a>
-        <a href="/dashboard" className="font-semibold text-lg">
+        </Link>
+        <Link href="/dashboard" className="font-semibold text-lg">
           Dashboard
-        </a>
+        </Link>
       </div>
       {!user ? (
         <div className="flex gap-2">
-          <a
+          <Link
             href="/login"
             className="py-1 px-4 rounded-3xl border-neutral-light border"
           >
             Log In
-          </a>
-          <a
+          </Link>
+          <Link
             href="/register"
             className="py-1 px-4 rounded-3xl bg-neutral-light border text-primary-dark"
           >
             Register
-          </a>
+          </Link>
         </div>
       ) : (
         <div className="flex gap-2">
@@ -81,20 +84,17 @@ export function TopNav({ user }: { user: any }) {
 }
 
 export function SideNav() {
-  const [isBell, setIsBell] = useState(true);
-  const handleBellClick = () => {
-    setIsBell(!isBell);
-  };
+  const [isBell] = useState(true);
   return (
     <aside className="w-20 p-4 m-4 rounded-full h-[85vh] bg-linear-to-br to-primary-dark from-primary-light flex flex-col items-center justify-between text-secondary sticky top-20">
       <div className="flex flex-col items-center gap-6 w-full">
-        <button
+        <Link
+          href="/notifications"
           className="border-b w-full items-center flex justify-center py-6"
           title="Notifications"
-          onClick={handleBellClick}
         >
           <Bell className="w-8 h-8" fill={`${isBell ? "#d1d5db" : "none"}`} />
-        </button>
+        </Link>
         <div className="flex flex-col items-center w-full gap-6">
           <Link href={"/dashboard"} title="Dashboard">
             <House className="w-8 h-8" />

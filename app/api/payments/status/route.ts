@@ -48,10 +48,53 @@ export async function GET(req: NextRequest) {
           payment.metadata.checkout_request_id,
         );
 
+        const resultCode = Number(statusResult?.ResultCode);
+
         // If M-Pesa says success but we haven't processed callback yet
-        if (statusResult.ResultCode === "0" && payment.status === "pending") {
-          // Trigger manual processing or wait for callback
-          // For now, just return current status
+        if (resultCode === 0 && payment.status === "pending") {
+          const completedAt = new Date().toISOString();
+
+          await supabase
+            .from("payments")
+            .update({
+              status: "completed",
+              completed_at: completedAt,
+              metadata: {
+                ...payment.metadata,
+                result_code: resultCode,
+                result_desc: statusResult?.ResultDesc || "Success",
+                reconciled_from_status_query: true,
+              },
+            })
+            .eq("id", payment.id);
+
+          await supabase
+            .from("bookings")
+            .update({ status: "completed", payment_status: "paid" })
+            .eq("id", payment.booking_id);
+
+          payment.status = "completed";
+          payment.completed_at = completedAt;
+        } else if (resultCode > 0 && payment.status === "pending") {
+          await supabase
+            .from("payments")
+            .update({
+              status: "failed",
+              metadata: {
+                ...payment.metadata,
+                result_code: resultCode,
+                result_desc: statusResult?.ResultDesc || "Failed",
+                reconciled_from_status_query: true,
+              },
+            })
+            .eq("id", payment.id);
+
+          await supabase
+            .from("bookings")
+            .update({ payment_status: "failed" })
+            .eq("id", payment.booking_id);
+
+          payment.status = "failed";
         }
       } catch (queryError) {
         console.error("Failed to query STK status:", queryError);
