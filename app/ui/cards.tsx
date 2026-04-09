@@ -11,6 +11,30 @@ import { poppins } from "./fonts";
 import Link from "next/link";
 import Image from "next/image";
 
+const normalizeImageSrc = (src: string | null | undefined, fallback: string) => {
+  const value = (src || "").trim();
+
+  if (!value) return fallback;
+
+  const lower = value.toLowerCase();
+  if (lower === "null" || lower === "undefined") return fallback;
+
+  if (
+    value.startsWith("/") ||
+    value.startsWith("http://") ||
+    value.startsWith("https://") ||
+    value.startsWith("data:image/") ||
+    value.startsWith("blob:")
+  ) {
+    return value;
+  }
+
+  return fallback;
+};
+
+const isUnoptimizedSrc = (src: string) =>
+  src.startsWith("blob:") || src.startsWith("data:image/");
+
 export const ReasonCard = ({
   className,
   icon,
@@ -78,15 +102,19 @@ export const GigCard = ({
   proximity: string;
   isAvailable?: boolean;
 }) => {
+  const cardImageSrc = normalizeImageSrc(image, "/gigs/design.jpg");
+  const avatarSrc = normalizeImageSrc(giggerAvatar, "/portraits/person1.jpg");
+
   return (
     <Link href={`/gigs/${id}`} className="block h-full">
       <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition-shadow hover:shadow-xl">
         <div className="relative h-40 w-full overflow-hidden bg-indigo-50">
           <Image
             alt={title}
-            src={image || "/gigs/design.jpg"}
+            src={cardImageSrc}
             fill
             sizes="(max-width: 768px) 100vw, 33vw"
+            unoptimized={isUnoptimizedSrc(cardImageSrc)}
             className="object-cover w-full opacity-80 transition-transform duration-500 group-hover:scale-105"
           />
           <span className="absolute right-3 top-3 rounded-full bg-white px-3 py-1 text-xs font-bold text-primary shadow-sm">
@@ -137,9 +165,10 @@ export const GigCard = ({
               <div className="relative h-8 w-8 overflow-hidden rounded-full border-2 border-white">
                 <Image
                   alt={gigger}
-                  src={giggerAvatar || "/portraits/person1.jpg"}
+                  src={avatarSrc}
                   fill
                   sizes="32px"
+                  unoptimized={isUnoptimizedSrc(avatarSrc)}
                   className="object-cover"
                 />
               </div>
@@ -201,6 +230,8 @@ export function BookingCard({
   onMarkDone?: () => void;
   onPay?: () => void;
 }) {
+  const bookingCoverSrc = normalizeImageSrc(cover, "");
+
   const isCompleted = status === "completed";
   const isPaid = ["paid", "completed"].includes(payment_status);
   const isPending = status === "pending";
@@ -210,12 +241,13 @@ export function BookingCard({
     <div className="flex w-full justify-between rounded-xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-md">
       <Link className="flex items-start gap-4" href={`/checkout/${id}`}>
         <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-blue-50 text-primary overflow-hidden">
-          {cover ? (
+          {bookingCoverSrc ? (
             <Image
-              src={cover}
+              src={bookingCoverSrc}
               alt={title}
               width={64}
               height={64}
+              unoptimized={isUnoptimizedSrc(bookingCoverSrc)}
               className="h-full w-full object-cover"
             />
           ) : (
