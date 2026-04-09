@@ -14,11 +14,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { logout } from "../hooks/auth";
 
-export function TopNav({
-  user,
-}: {
-  user: { id?: string } | null;
-}) {
+export function TopNav({ user }: { user: { id?: string } | null }) {
   const { isVisible, isAtTop } = UseScrollDirection();
   const pathName = usePathname();
   const heroRoutes = ["/", "/gigs", "/legal", "/privacy"];
@@ -36,7 +32,7 @@ export function TopNav({
       `}
     >
       <Link href="/" className="h-[75%] flex items-center gap-2">
-        <div className="h-full bg-neutral-light aspect-square rounded-full flex items-center justify-center">
+        <div className="h-full bg-neutral-light/20 aspect-square rounded-full flex items-center justify-center">
           <img src={"/logo.png"} className="h-[85%]" alt="Jiffy Gigs logo" />
         </div>
         <h1 className={`text-2xl font-bold uppercase ${poppins.className}`}>
