@@ -75,30 +75,50 @@ const categoryColors: Record<string, string> = {
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [recommendedOffset, setRecommendedOffset] = useState(0);
+
+  const fetchDashboard = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch("/api/dashboard", { credentials: "include" });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to load dashboard");
+      }
+
+      setData(payload);
+    } catch (err: unknown) {
+      setData(null);
+      setError(err instanceof Error ? err.message : "Failed to load dashboard");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    fetch("/api/dashboard", { credentials: "include" })
-      .then((r) => r.json())
-      .then((d) => {
-        setData(d);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    fetchDashboard();
   }, []);
 
   const formatCurrency = (n: number) =>
-    new Intl.NumberFormat("en-US", {
+    new Intl.NumberFormat("en-KE", {
       style: "currency",
-      currency: "USD",
+      currency: "KES",
+      maximumFractionDigits: 0,
     }).format(n);
 
   const getCoverUrl = (path?: string) => {
     if (!path) return "/gigs/design.jpg";
     if (path.startsWith("http")) return path;
-    return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/GigCovers/${path}`;
+    const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!base) return "/gigs/design.jpg";
+    return `${base}/storage/v1/object/public/GigCovers/${path}`;
   };
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <section className="flex w-full flex-col gap-4 overflow-y-scroll p-4 pl-6 text-brand-text h-[85vh] animate-pulse">
         <div className="h-8 w-48 bg-gray-200 rounded mb-4" />
@@ -111,7 +131,37 @@ export default function Dashboard() {
     );
   }
 
+  if (error || !data) {
+    return (
+      <section className="flex w-full h-[85vh] items-center justify-center p-6">
+        <div className="w-full max-w-md rounded-2xl border border-brand-border bg-white p-6 text-center shadow-sm">
+          <h2 className={`${poppins.className} text-xl font-bold text-brand-text`}>
+            Couldn&apos;t load dashboard
+          </h2>
+          <p className={`${inter.className} mt-2 text-sm text-brand-muted`}>
+            {error || "Something went wrong while fetching your dashboard data."}
+          </p>
+          <button
+            onClick={fetchDashboard}
+            className="mt-4 rounded-lg bg-primary-light px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          >
+            Retry
+          </button>
+        </div>
+      </section>
+    );
+  }
+
   const { user, stats, visitorStats, weeklyTasks, recommended, feed } = data;
+  const growthValue = Number(stats.growth || 0);
+  const growthPrefix = growthValue > 0 ? "+" : "";
+  const recommendedPageSize = 2;
+  const visibleRecommended = recommended.slice(
+    recommendedOffset,
+    recommendedOffset + recommendedPageSize,
+  );
+  const canGoPrev = recommendedOffset > 0;
+  const canGoNext = recommendedOffset + recommendedPageSize < recommended.length;
 
   return (
     <section className="flex w-full flex-col gap-4 overflow-y-scroll p-4 pl-6 text-brand-text h-[85vh]">
@@ -140,7 +190,8 @@ export default function Dashboard() {
             <span
               className={`${inter.className} rounded-lg border border-brand-accent/20 bg-brand-accent/10 px-2.5 py-1 text-xs font-bold text-brand-accent`}
             >
-              +{stats.growth}%
+              {growthPrefix}
+              {stats.growth}%
             </span>
           </div>
           <div className="flex items-end justify-between">
@@ -151,7 +202,7 @@ export default function Dashboard() {
             </h3>
           </div>
           <Link
-            href="/bookings?filter=completed"
+            href="/bookings?view=provided&filter=completed"
             className={`${inter.className} mt-4 flex items-center text-xs font-bold text-brand-info hover:underline w-fit`}
           >
             View full report <ArrowRight size={14} className="ml-1" />
@@ -245,8 +296,8 @@ export default function Dashboard() {
                   Weekly Task Progress
                 </h2>
                 <p className={`${inter.className} text-sm text-brand-muted`}>
-                  You've completed {stats.completedThisMonth} out of{" "}
-                  {stats.totalTasks} tasks this week
+                  You&apos;ve completed {stats.completedThisMonth} out of{" "}
+                  {stats.totalTasks} tasks this month
                 </p>
               </div>
               <div className="flex items-center gap-6">
@@ -302,10 +353,31 @@ export default function Dashboard() {
                     task.due &&
                     new Date(task.due) <
                       new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+                  const taskStatusText =
+                    task.status === "pending"
+                      ? "Awaiting acceptance"
+                      : task.status === "active"
+                        ? isDueSoon
+                          ? "Due soon"
+                          : "In progress"
+                        : "Awaiting payment";
+                  const taskBadgeText =
+                    task.status === "pending"
+                      ? "Pending"
+                      : task.status === "active"
+                        ? "Ongoing"
+                        : "Completed";
+                  const taskBadgeClass =
+                    task.status === "pending"
+                      ? "border-amber-200 bg-amber-50 text-amber-700"
+                      : task.status === "active"
+                        ? "border-brand-info/20 bg-brand-info/10 text-brand-info"
+                        : "border-accent/20 bg-accent/10 text-accent";
 
                   return (
-                    <div
+                    <Link
                       key={task.id}
+                      href={`/checkout/${task.id}`}
                       className="flex cursor-pointer items-center justify-between rounded-xl border border-brand-border bg-gray-50 p-4 transition-colors hover:border-brand-info/50"
                     >
                       <div className="flex items-center gap-4">
@@ -323,8 +395,7 @@ export default function Dashboard() {
                           <p
                             className={`${inter.className} text-xs text-brand-muted`}
                           >
-                            {task.category} •{" "}
-                            {isDueSoon ? "Due soon" : "In progress"}
+                            {task.category} • {taskStatusText}
                           </p>
                         </div>
                       </div>
@@ -332,15 +403,15 @@ export default function Dashboard() {
                         <p
                           className={`${poppins.className} font-bold text-brand-text`}
                         >
-                          ${task.price}
+                          {formatCurrency(task.price)}
                         </p>
                         <span
-                          className={`${inter.className} rounded border border-brand-info/20 bg-brand-info/10 px-2 py-0.5 text-[10px] font-bold uppercase text-brand-info`}
+                          className={`${inter.className} rounded border px-2 py-0.5 text-[10px] font-bold uppercase ${taskBadgeClass}`}
                         >
-                          Ongoing
+                          {taskBadgeText}
                         </span>
                       </div>
-                    </div>
+                    </Link>
                   );
                 })
               )}
@@ -356,10 +427,26 @@ export default function Dashboard() {
                 Recommended Opportunities
               </h2>
               <div className="flex gap-2">
-                <button className="rounded-lg border border-brand-border bg-white p-2 text-brand-muted shadow-sm transition-colors hover:bg-gray-50 hover:text-brand-info">
+                <button
+                  disabled={!canGoPrev}
+                  onClick={() =>
+                    setRecommendedOffset((prev) =>
+                      Math.max(prev - recommendedPageSize, 0),
+                    )
+                  }
+                  className="rounded-lg border border-brand-border bg-white p-2 text-brand-muted shadow-sm transition-colors hover:bg-gray-50 hover:text-brand-info disabled:cursor-not-allowed disabled:opacity-40"
+                >
                   <ChevronLeft size={14} />
                 </button>
-                <button className="rounded-lg border border-brand-border bg-white p-2 text-brand-muted shadow-sm transition-colors hover:bg-gray-50 hover:text-brand-info">
+                <button
+                  disabled={!canGoNext}
+                  onClick={() =>
+                    setRecommendedOffset((prev) =>
+                      Math.min(prev + recommendedPageSize, Math.max(recommended.length - recommendedPageSize, 0)),
+                    )
+                  }
+                  className="rounded-lg border border-brand-border bg-white p-2 text-brand-muted shadow-sm transition-colors hover:bg-gray-50 hover:text-brand-info disabled:cursor-not-allowed disabled:opacity-40"
+                >
                   <ChevronRight size={14} />
                 </button>
               </div>
@@ -373,7 +460,7 @@ export default function Dashboard() {
                   No recommendations right now. Check back later!
                 </p>
               ) : (
-                recommended.map((gig) => (
+                visibleRecommended.map((gig) => (
                   <div
                     key={gig.id}
                     className="group flex flex-col overflow-hidden rounded-2xl border border-brand-border bg-white shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_4px_6px_-2px_rgba(0,0,0,0.05)] transition-all hover:border-brand-info/50"
@@ -409,7 +496,7 @@ export default function Dashboard() {
                         <div className="flex items-center gap-2">
                           {gig.provider.pic ? (
                             <Image
-                              alt={gig.provider.name}
+                              alt={gig.provider.name || "Provider"}
                               src={gig.provider.pic}
                               width={24}
                               height={24}
@@ -423,7 +510,7 @@ export default function Dashboard() {
                           <span
                             className={`${inter.className} text-xs font-medium text-brand-muted`}
                           >
-                            {gig.provider.name}
+                            {gig.provider.name || "Unknown provider"}
                           </span>
                         </div>
                         <Link
@@ -566,7 +653,7 @@ export default function Dashboard() {
                         <>
                           Payment of{" "}
                           <span className="font-bold text-brand-text">
-                            ${item.amount}
+                            {formatCurrency(item.amount || 0)}
                           </span>{" "}
                           received
                         </>

@@ -12,112 +12,76 @@ export async function GET() {
   }
 
   try {
-    // Get user profile
+    const one = <T,>(value: T | T[] | null | undefined): T | undefined =>
+      Array.isArray(value) ? value[0] : (value ?? undefined);
+
     const { data: profile } = await supabase
       .from("users")
       .select("name")
       .eq("id", user.id)
       .single();
 
-    // Total Earnings (completed & paid gigs as provider)
-    const { data: earningsData } = await supabase
-      .from("bookings")
-      .select("gig:gigs!inner(price)")
-      .eq("gigs.posted_by", user.id)
-      .eq("status", "completed")
-      .eq("payment_status", "paid");
-
-    const totalEarnings =
-      earningsData?.reduce((sum, b: any) => {
-        return sum + (b.gig?.[0]?.price || 0);
-      }, 0) || 0;
-
-    // Calculate growth (compare to last month)
-    const lastMonth = new Date();
-    lastMonth.setMonth(lastMonth.getMonth() - 1);
-
-    const { data: lastMonthEarnings } = await supabase
-      .from("bookings")
-      .select("gig:gigs!inner(price)")
-      .eq("gigs.posted_by", user.id)
-      .eq("status", "completed")
-      .eq("payment_status", "paid")
-      .gte("created_at", lastMonth.toISOString());
-
-    const lastMonthTotal =
-      lastMonthEarnings?.reduce((sum, b: any) => {
-        return sum + (b.gig?.[0]?.price || 0);
-      }, 0) || 0;
-
-    const growth =
-      lastMonthTotal > 0
-        ? (((totalEarnings - lastMonthTotal) / lastMonthTotal) * 100).toFixed(1)
-        : "0";
-
-    // Active Gigs (bookings as provider that are active)
-    const { count: activeGigs } = await supabase
-      .from("bookings")
-      .select("*", { count: "exact", head: true })
-      .eq("gig.posted_by", user.id)
-      .eq("status", "active");
-
-    // Completed this month
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    const { count: completedThisMonth } = await supabase
-      .from("bookings")
-      .select("*", { count: "exact", head: true })
-      .eq("gig.posted_by", user.id)
-      .eq("status", "completed")
-      .gte("created_at", startOfMonth.toISOString());
-
-    // Pending (active bookings as client)
-    const { count: pendingAsClient } = await supabase
-      .from("bookings")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("status", "active");
-
-    // Weekly visitor stats (bookings created per day this week)
-    const weekDays = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      weekDays.push(d.toISOString().split("T")[0]);
-    }
-
-    const { data: dailyBookings } = await supabase
-      .from("bookings")
-      .select("created_at")
-      .gte("created_at", weekDays[0])
-      .or(`user_id.eq.${user.id},gig.posted_by.eq.${user.id}`);
-
-    const visitorStats = weekDays.map((date) => {
-      const count =
-        dailyBookings?.filter((b: any) => b.created_at.startsWith(date))
-          .length || 0;
-      // Scale for visual (max 100%)
-      return Math.min((count / 5) * 100, 100);
-    });
-
-    // Weekly tasks (active bookings with gig details)
-    const { data: weeklyTasks } = await supabase
+    const { data: myBookings, error: myBookingsError } = await supabase
       .from("bookings")
       .select(
         `
         id,
+        user_id,
+        gig_id,
         status,
-        gig:gigs(title, price, category:categories(name)),
-        preferred_submission
+        payment_status,
+        created_at,
+        preferred_submission,
+        gig:gigs(
+          id,
+          title,
+          price,
+          per,
+          cover,
+          posted_by,
+          category:categories(name),
+          provider:users!posted_by(name, profile_pic)
+        )
       `,
       )
-      .or(`user_id.eq.${user.id},gig.posted_by.eq.${user.id}`)
-      .eq("status", "active")
-      .order("preferred_submission", { ascending: true })
-      .limit(4);
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
 
-    // Recommended opportunities (gigs not by user, not booked by user)
-    const { data: recommended } = await supabase
+    if (myBookingsError) {
+      throw new Error(myBookingsError.message);
+    }
+
+    const { data: providerBookings, error: providerBookingsError } = await supabase
+      .from("bookings")
+      .select(
+        `
+        id,
+        user_id,
+        gig_id,
+        status,
+        payment_status,
+        created_at,
+        preferred_submission,
+        gig:gigs!inner(
+          id,
+          title,
+          price,
+          per,
+          cover,
+          posted_by,
+          category:categories(name)
+        ),
+        client:users!user_id(name)
+      `,
+      )
+      .eq("gigs.posted_by", user.id)
+      .order("created_at", { ascending: false });
+
+    if (providerBookingsError) {
+      throw new Error(providerBookingsError.message);
+    }
+
+    const { data: recommendedPool, error: recommendedError } = await supabase
       .from("gigs")
       .select(
         `
@@ -131,48 +95,181 @@ export async function GET() {
       `,
       )
       .neq("posted_by", user.id)
-      .not(
-        "id",
-        "in",
-        supabase.from("bookings").select("gig_id").eq("user_id", user.id),
-      )
       .order("created_at", { ascending: false })
-      .limit(4);
+      .limit(20);
 
-    // Quick feed (recent bookings/messages)
-    const { data: recentBookings } = await supabase
-      .from("bookings")
-      .select(
-        `
-        id,
-        status,
-        payment_status,
-        created_at,
-        gig:gigs(title),
-        client:users!user_id(name)
-      `,
+    if (recommendedError) {
+      throw new Error(recommendedError.message);
+    }
+
+    const { data: completedPayments } = await supabase
+      .from("payments")
+      .select("amount, created_at, metadata, status")
+      .eq("user_id", user.id)
+      .in("status", ["paid", "completed"])
+      .order("created_at", { ascending: false });
+
+    const providerRows = providerBookings || [];
+    const clientRows = myBookings || [];
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    const sellerCreditPayments = (completedPayments || []).filter((payment: any) => {
+      const metadata = payment?.metadata || {};
+      return metadata?.direction === "seller_credit";
+    });
+
+    const hasSellerCreditPayments = sellerCreditPayments.length > 0;
+
+    const fallbackEarningRows = providerRows
+      .filter(
+        (row: any) =>
+          row.status === "completed" &&
+          ["paid", "completed"].includes(row.payment_status),
       )
-      .or(`user_id.eq.${user.id},gig.posted_by.eq.${user.id}`)
-      .order("created_at", { ascending: false })
-      .limit(3);
+      .map((row: any) => {
+        const gig = one<any>(row.gig);
+        return {
+          amount: Number(gig?.price || 0),
+          created_at: row.created_at,
+        };
+      });
 
-    const feed =
-      recentBookings?.map((b: any) => ({
-        type:
-          b.gig?.posted_by === user.id
-            ? "booking_received"
-            : b.payment_status === "paid"
-              ? "payment"
-              : "message",
-        text:
-          b.gig?.posted_by === user.id
-            ? `New booking for ${b.gig?.title}`
-            : b.payment_status === "paid"
-              ? `Payment received for ${b.gig?.title}`
-              : `Update on ${b.gig?.title}`,
-        name: b.client?.[0]?.name,
-        amount: b.gig?.price,
-      })) || [];
+    const earningRows = hasSellerCreditPayments
+      ? sellerCreditPayments.map((payment: any) => ({
+          amount: Number(payment.amount || 0),
+          created_at: payment.created_at,
+        }))
+      : fallbackEarningRows;
+
+    const totalEarnings = earningRows.reduce(
+      (sum: number, row: any) => sum + Number(row.amount || 0),
+      0,
+    );
+
+    const currentMonthEarnings = earningRows.reduce((sum: number, row: any) => {
+      const createdAt = new Date(row.created_at);
+      if (createdAt >= startOfMonth) {
+        return sum + Number(row.amount || 0);
+      }
+      return sum;
+    }, 0);
+
+    const previousMonthEarnings = earningRows.reduce((sum: number, row: any) => {
+      const createdAt = new Date(row.created_at);
+      if (createdAt >= startOfPreviousMonth && createdAt < startOfMonth) {
+        return sum + Number(row.amount || 0);
+      }
+      return sum;
+    }, 0);
+
+    const growth =
+      previousMonthEarnings > 0
+        ? (((currentMonthEarnings - previousMonthEarnings) / previousMonthEarnings) * 100).toFixed(1)
+        : currentMonthEarnings > 0
+          ? "100.0"
+          : "0.0";
+
+  const pendingAsClient = clientRows.filter((row: any) => ["pending", "active"].includes(row.status)).length;
+
+    const weekDays = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - (6 - i));
+      return d.toISOString().slice(0, 10);
+    });
+
+    const combinedRows = [...providerRows, ...clientRows];
+    const uniqueRowsMap = new Map<string, any>();
+    combinedRows.forEach((row: any) => {
+      if (!uniqueRowsMap.has(row.id)) {
+        uniqueRowsMap.set(row.id, row);
+      }
+    });
+    const uniqueRows = Array.from(uniqueRowsMap.values());
+
+    const dailyCounts = weekDays.map((day) =>
+      uniqueRows.filter((row: any) => String(row.created_at || "").startsWith(day)).length,
+    );
+    const maxDay = Math.max(...dailyCounts, 1);
+    const visitorStats = dailyCounts.map((count) => Math.round((count / maxDay) * 100));
+
+    const weeklyTasks = uniqueRows
+      .filter(
+        (row: any) =>
+          ["pending", "active"].includes(row.status) ||
+          (row.status === "completed" && row.payment_status === "pending"),
+      )
+      .sort((a: any, b: any) => {
+        const aDue = a.preferred_submission ? new Date(a.preferred_submission).getTime() : Number.MAX_SAFE_INTEGER;
+        const bDue = b.preferred_submission ? new Date(b.preferred_submission).getTime() : Number.MAX_SAFE_INTEGER;
+        return aDue - bDue;
+      })
+      .slice(0, 4)
+      .map((row: any) => {
+  const gig = one<any>(row.gig);
+  const category = one<any>(gig?.category);
+
+        return {
+          id: row.id,
+          title: gig?.title || "Untitled gig",
+          category: category?.name || "General",
+          price: Number(gig?.price || 0),
+          due: row.preferred_submission,
+          status: row.status,
+        };
+      });
+
+    const bookedGigIds = new Set(
+      clientRows.map((row: any) => row.gig_id).filter((id: string | null) => Boolean(id)),
+    );
+
+    const recommended = (recommendedPool || [])
+      .filter((gig: any) => !bookedGigIds.has(gig.id))
+      .slice(0, 8)
+      .map((gig: any) => ({
+        id: gig.id,
+        title: gig.title,
+        price: Number(gig.price || 0),
+        per: gig.per,
+        cover: gig.cover,
+        provider: {
+          name: one<any>(gig.provider)?.name || "Unknown provider",
+          pic: one<any>(gig.provider)?.profile_pic,
+        },
+      }));
+
+    const feed = uniqueRows
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 5)
+      .map((row: any) => {
+        const gig = one<any>(row.gig);
+        const client = one<any>(row.client)?.name;
+        const provider = one<any>(gig?.provider)?.name;
+        const isProviderSide = gig?.posted_by === user.id;
+        const isPayment = ["paid", "completed"].includes(row.payment_status);
+
+        return {
+          type: isPayment ? "payment" : isProviderSide ? "booking_received" : "message",
+          text: isPayment
+            ? `Payment confirmed for ${gig?.title || "your booking"}`
+            : isProviderSide
+              ? `Booking request for ${gig?.title || "your gig"}`
+              : `Update on ${gig?.title || "your booking"}`,
+          name: isProviderSide ? client || "Buyer" : provider || "Seller",
+          amount: Number(gig?.price || 0),
+        };
+      });
+
+    const activeGigs = providerRows.filter((row: any) => row.status === "active").length;
+    const completedThisMonth = providerRows.filter((row: any) => {
+      const createdAt = new Date(row.created_at);
+      return row.status === "completed" && createdAt >= startOfMonth;
+    }).length;
+
+    const totalTasks = activeGigs + completedThisMonth;
+    const completionRate = totalTasks > 0 ? (completedThisMonth / totalTasks) * 100 : 0;
 
     return NextResponse.json({
       user: {
@@ -181,42 +278,25 @@ export async function GET() {
       stats: {
         totalEarnings,
         growth,
-        activeGigs: activeGigs || 0,
-        completedThisMonth: completedThisMonth || 0,
-        pendingAsClient: pendingAsClient || 0,
-        totalTasks: (activeGigs || 0) + (completedThisMonth || 0),
-        completionRate:
-          ((completedThisMonth || 0) /
-            ((activeGigs || 0) + (completedThisMonth || 0))) *
-            100 || 0,
+        activeGigs,
+        completedThisMonth,
+        pendingAsClient,
+        totalTasks,
+        completionRate,
       },
       visitorStats,
-      weeklyTasks:
-        weeklyTasks?.map((t: any) => ({
-          id: t.id,
-          title: t.gig?.title,
-          category: t.gig?.category?.[0]?.name || "General",
-          price: t.gig?.price,
-          due: t.preferred_submission,
-          status: t.status,
-        })) || [],
-      recommended:
-        recommended?.map((g: any) => ({
-          id: g.id,
-          title: g.title,
-          price: g.price,
-          per: g.per,
-          cover: g.cover,
-          provider: {
-            name: g.provider?.[0]?.name,
-            pic: g.provider?.[0]?.profile_pic,
-          },
-        })) || [],
+      weeklyTasks,
+      recommended,
       feed,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
-      { error: error.message || "Failed to fetch dashboard data" },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch dashboard data",
+      },
       { status: 400 },
     );
   }

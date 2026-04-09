@@ -1,6 +1,6 @@
 "use client";
 
-import React, { startTransition, useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Brush,
   GraduationCap,
@@ -12,7 +12,6 @@ import {
   LightbulbIcon,
   CheckCircle2,
   BookOpen,
-  Wrench,
   Heart,
   BadgeCheck,
   Brain,
@@ -31,51 +30,94 @@ import {
 import { poppins } from "@/app/ui/fonts";
 import { GigCard } from "@/app/ui/cards";
 import { createGig } from "@/app/hooks/gigsPost";
+import { categories as gigCategories } from "@/app/constants/categories";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/authcontext";
 
 export default function PostGig() {
   const MAX_FILE_SIZE_MB = 5;
   const MAX_PORTFOLIO_FILES = 6;
   const MAX_TOTAL_UPLOAD_MB = 15;
+  const router = useRouter();
+  const { user } = useAuth();
+
+  const previewGigger =
+    user?.name?.trim() || user?.email?.split("@")[0] || "You";
+  const previewGiggerAvatar = user?.profile_pic || "/portraits/person1.jpg";
 
   const [formData, setFormData] = useState({
     gigTitle: "",
-    category: "Academic Support",
+    category: gigCategories[0] || "Design & Creative",
     description: "",
     budget: "",
     pricingType: "gig",
     location: "",
-    cover: null as File | null,
     qualifications: "",
-    skills: ["Graphic Design", "Figma", "Illustration"],
-    portfolio: [] as File[],
   });
+  const [formError, setFormError] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(formData.category);
-  const [skills, setSkills] = useState<string[]>(formData.skills);
+  const [skills, setSkills] = useState<string[]>([
+    "Graphic Design",
+    "Figma",
+    "Illustration",
+  ]);
   const [addSkill, setAddSkill] = useState<boolean>(false);
   const [newSkill, setNewSkill] = useState("");
-  const [cover, setCover] = useState<File | null>(formData.cover);
-  const [portfolioFiles, setPortfolioFiles] = useState<File[]>(
-    formData.portfolio,
-  );
+  const [cover, setCover] = useState<File | null>(null);
+  const [portfolioFiles, setPortfolioFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const portfolioFileRef = useRef<HTMLInputElement>(null);
+  const [isSubmitting, startSubmitting] = useTransition();
 
-  const categories = [
-    { id: "academic-support", label: "Academic Support", icon: GraduationCap },
-    { id: "creative-technical", label: "Creative & Technical", icon: Brush },
-    { id: "tutoring", label: "Tutoring", icon: BookOpen },
-    { id: "errands-help", label: "Errands & Practical Help", icon: Wrench },
-    { id: "personal-lifestyle", label: "Personal & Lifestyle", icon: Heart },
-    { id: "miscellaneous", label: "Miscellaneous", icon: MoreHorizontal },
-  ];
+  const categoryIcons: Record<string, LucideIcon> = {
+    "Design & Creative": Brush,
+    "Tutoring & Academic": GraduationCap,
+    "Programming & Tech": Brain,
+    "Personal Care & Grooming": Heart,
+    "Events & Photography": BookOpen,
+  };
+
+  const categories = gigCategories.map((label) => ({
+    id: label.toLowerCase().replace(/\s*&\s*|\s+/g, "-"),
+    label,
+    icon: categoryIcons[label] || MoreHorizontal,
+  }));
+
+  const isAllowedImage = (file: File) => /image\/(png|jpg|jpeg|webp)/.test(file.type);
+  const isAllowedPortfolioFile = (file: File) =>
+    isAllowedImage(file) || file.type === "application/pdf";
+
+  const previewImageUrl = useMemo(
+    () => (cover ? URL.createObjectURL(cover) : ""),
+    [cover],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (previewImageUrl) {
+        URL.revokeObjectURL(previewImageUrl);
+      }
+    };
+  }, [previewImageUrl]);
 
   const handleFileSelect = (file: File) => {
-    if (!file.type.match(/image\/(png|jpg|jpeg|webp)/)) {
+    if (!isAllowedImage(file)) {
       alert("File Format Not Supported!");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
       alert("File size must be less than 5MB!");
+      return;
+    }
+
+    const currentPortfolioBytes = portfolioFiles.reduce(
+      (sum, currentFile) => sum + currentFile.size,
+      0,
+    );
+    if (currentPortfolioBytes + file.size > MAX_TOTAL_UPLOAD_MB * 1024 * 1024) {
+      alert(
+        `Total upload size (cover + portfolio) must be under ${MAX_TOTAL_UPLOAD_MB}MB.`,
+      );
       return;
     }
 
@@ -85,11 +127,9 @@ export default function PostGig() {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    const invalidType = files.find(
-      (file) => !file.type.match(/image\/(png|jpg|jpeg|webp)/),
-    );
+    const invalidType = files.find((file) => !isAllowedPortfolioFile(file));
     if (invalidType) {
-      alert("Portfolio files must be png, jpg, jpeg, or webp images.");
+      alert("Portfolio files must be png, jpg, jpeg, webp, or PDF.");
       return;
     }
 
@@ -124,6 +164,9 @@ export default function PostGig() {
     }
 
     setPortfolioFiles([...portfolioFiles, ...files]);
+    if (portfolioFileRef.current) {
+      portfolioFileRef.current.value = "";
+    }
   };
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -157,11 +200,12 @@ export default function PostGig() {
       setSkills([...skills, newSkill.trim()]);
       setNewSkill("");
       setAddSkill(false);
+      setFormError("");
     }
   };
 
   const [step, setStep] = useState<number>(1);
-  let stepTitle =
+  const stepTitle =
     step === 1
       ? "Gig Details"
       : step === 2
@@ -172,50 +216,38 @@ export default function PostGig() {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     const { id, value } = e.target;
+    setFormError("");
     setFormData((prev) => ({ ...prev, [id]: value }));
   };
 
-  useEffect(() => {
-    setFormData((prev) => ({ ...prev, skills }));
-  }, [skills]);
-
-  useEffect(() => {
-    setFormData((prev) => ({ ...prev, cover }));
-  }, [cover]);
-
-  useEffect(() => {
-    setFormData((prev) => ({ ...prev, portfolio: portfolioFiles }));
-  }, [portfolioFiles]);
-
   const validateStep = (stepNumber: number): boolean => {
+    const fail = (message: string) => {
+      setFormError(message);
+      return false;
+    };
+
     switch (stepNumber) {
       case 1:
         if (!formData.gigTitle.trim()) {
-          alert("Please enter a gig title");
-          return false;
+          return fail("Please enter a gig title.");
         }
         if (!formData.description.trim()) {
-          alert("Please enter a description");
-          return false;
+          return fail("Please enter a description.");
         }
-        if (!formData.budget) {
-          alert("Please enter an estimated budget");
-          return false;
+        if (!formData.budget || Number(formData.budget) <= 0) {
+          return fail("Please enter a valid estimated budget.");
         }
         if (!formData.location.trim()) {
-          alert("Please enter your location");
-          return false;
+          return fail("Please enter your location.");
         }
         return true;
 
       case 2:
         if (!formData.qualifications.trim()) {
-          alert("Please list your qualifications");
-          return false;
+          return fail("Please list your qualifications.");
         }
-        if (formData.skills.length === 0) {
-          alert("Please add at least one skill");
-          return false;
+        if (skills.length === 0) {
+          return fail("Please add at least one skill.");
         }
         return true;
 
@@ -228,23 +260,34 @@ export default function PostGig() {
   };
 
   const handleNextstep = () => {
-    if (validateStep(step)) setStep(step + 1);
+    if (validateStep(step)) {
+      setFormError("");
+      setStep(step + 1);
+    }
   };
   const handlePreviousStep = () => {
+    setFormError("");
     setStep(step - 1);
   };
   const handleSubmit = async () => {
     if (!validateStep(3)) return;
+
+    const numericBudget = Number(formData.budget);
+    if (!Number.isFinite(numericBudget) || numericBudget <= 0) {
+      setFormError("Please provide a valid budget amount.");
+      return;
+    }
+
     const fd = new FormData();
 
     fd.append("title", formData.gigTitle);
     fd.append("description", formData.description);
-    fd.append("price", formData.budget);
-  fd.append("per", formData.pricingType);
+    fd.append("price", String(numericBudget));
+    fd.append("per", formData.pricingType);
     fd.append("location", formData.location);
     fd.append("category", formData.category);
     fd.append("qualifications", formData.qualifications);
-  formData.skills.forEach((skill) => fd.append("skills[]", skill));
+  skills.forEach((skill) => fd.append("skills[]", skill));
 
     if (cover) {
       fd.append("cover", cover);
@@ -254,8 +297,17 @@ export default function PostGig() {
       fd.append("portfolio", file);
     });
 
-    startTransition(async () => {
-      await createGig(fd);
+    startSubmitting(async () => {
+      try {
+        setFormError("");
+        await createGig(fd);
+      } catch (error: unknown) {
+        setFormError(
+          error instanceof Error
+            ? error.message
+            : "Failed to publish gig. Please try again.",
+        );
+      }
     });
   };
 
@@ -352,6 +404,11 @@ export default function PostGig() {
           ></div>
         </div>
       </section>
+      {formError && (
+        <section className="w-full bg-red-50 text-red-700 border border-red-200 rounded-xl px-4 py-3 text-sm">
+          {formError}
+        </section>
+      )}
       {step === 1 && (
         <div className="bg-white rounded-2xl w-full flex flex-col gap-6 p-6 border-primary-light/20 border">
           <div className="flex flex-col gap-2 w-full">
@@ -409,6 +466,7 @@ export default function PostGig() {
                 <span className="text-primary-dark/70">KSh</span>
                 <input
                   type="number"
+                  min={1}
                   className="outline-none w-full pr-1"
                   id="budget"
                   onChange={handleInputChange}
@@ -431,6 +489,7 @@ export default function PostGig() {
                 <option value="gig">Per Gig</option>
                 <option value="hour">Per Hour</option>
                 <option value="project">Per Project</option>
+                <option value="day">Per Day</option>
               </select>
             </div>
             <div className="flex flex-col gap-2">
@@ -494,6 +553,7 @@ export default function PostGig() {
             <button
               className="py-2 px-4 rounded-lg hover:bg-secondary/20 font-semibold"
               type="button"
+              onClick={() => router.push("/gigs")}
             >
               Cancel
             </button>
@@ -514,7 +574,7 @@ export default function PostGig() {
               Showcase your expertise
             </h2>
             <p className="text-primary-dark/70 text-md font-semibold">
-              Tell clients why you're the right person for the job. Highlight
+              Tell clients why you&apos;re the right person for the job. Highlight
               your academic achievements and practical projects.
             </p>
           </div>
@@ -594,8 +654,8 @@ export default function PostGig() {
               Portfolio & Work Samples
             </h3>
             <label className="font-bold text-sm flex items-center gap-2">
-              Upload images, PDFs, or documents that demonstrate your previous
-              work or school projects.
+              Upload images or PDFs that demonstrate your previous work or
+              school projects.
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 my-2">
               <input
@@ -616,7 +676,7 @@ export default function PostGig() {
                   }}
                 />
               ))}
-              {portfolioFiles.length < 3 && (
+              {portfolioFiles.length < MAX_PORTFOLIO_FILES && (
                 <button
                   type="button"
                   className="flex flex-col items-center justify-center gap-2 border border-dashed rounded-lg p-4 h-40 border-primary-light/50 text-primary-dark/80 hover:text-primary-dark hover:border-primary-light"
@@ -624,6 +684,9 @@ export default function PostGig() {
                 >
                   <Upload />
                   <div className="font-semibold">Add Project</div>
+                  <div className="text-xs text-primary-dark/60">
+                    {portfolioFiles.length}/{MAX_PORTFOLIO_FILES}
+                  </div>
                 </button>
               )}
             </div>
@@ -660,14 +723,12 @@ export default function PostGig() {
                 durationPosted="Just Now"
                 id="preview"
                 description={formData.description}
-                tags={formData.skills}
-                giggerAvatar="/portraits/person1.jpg"
+                tags={skills}
+                giggerAvatar={previewGiggerAvatar}
                 proximity={formData.location}
-                gigger="Faraj Salim"
+                gigger={previewGigger}
                 charges={`Ksh ${formData.budget}`}
-                image={
-                  formData.cover ? URL.createObjectURL(formData.cover) : ""
-                }
+                image={previewImageUrl}
                 isAvailable={true}
               />
             </div>
@@ -726,8 +787,9 @@ export default function PostGig() {
               <button
                 className="py-2 px-4 bg-primary-light hover:bg-primary-light/90 rounded-lg text-neutral-light font-semibold"
                 onClick={() => handleSubmit()}
+                disabled={isSubmitting}
               >
-                Publish Gig
+                {isSubmitting ? "Publishing..." : "Publish Gig"}
               </button>
             </div>
           </div>
@@ -741,7 +803,7 @@ export default function PostGig() {
           </h4>
           <p className="text-primary-dark/70">
             Students are more likely to pick up gigs that have a clear title and
-            a fair budget. Don't forget to upload any necessary files in the
+            a fair budget. Don&apos;t forget to upload any necessary files in the
             next step!
           </p>
         </section>

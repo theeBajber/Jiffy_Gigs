@@ -16,10 +16,9 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const user = await getUser();
-  console.log(user);
   return (
-    <html lang="en">
-      <body className={`bg-neutral-light ${inter.className}`}>
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning className={`bg-neutral-light ${inter.className}`}>
         <AuthProvider serverUser={user}>{children}</AuthProvider>
       </body>
     </html>

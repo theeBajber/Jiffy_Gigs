@@ -8,6 +8,12 @@
   --color-neutral-light: #f7fafc;
   --color-neutral-dark: #253248;
   --color-error: #e53e3e;
+  --color-brand-text: var(--color-primary-dark);
+  --color-brand-muted: #6b7280;
+  --color-brand-border: #e5e7eb;
+  --color-brand-info: var(--color-primary-light);
+  --color-brand-accent: var(--color-accent);
+  --color-brand-purple: #8b5cf6;
 }
 
 button {

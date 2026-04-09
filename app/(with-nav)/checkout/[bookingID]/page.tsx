@@ -28,6 +28,9 @@ export default function CheckoutPage() {
     try {
       const res = await fetch(`/api/bookings/${bookingID}`);
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to fetch booking");
+      }
       setBooking(data);
 
       const reviewRes = await fetch(`/api/reviews?bookingId=${bookingID}`);
@@ -57,6 +60,7 @@ export default function CheckoutPage() {
   const paymentComplete = ["completed", "paid"].includes(
     booking.payment_status,
   );
+  const canReview = booking.status === "completed" && paymentComplete;
 
   const handleReviewSubmit = async () => {
     try {
@@ -84,16 +88,16 @@ export default function CheckoutPage() {
   };
 
   return (
-    <div className="max-w-2xl min-h-[85vh] mt-18 mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">Checkout</h1>
+    <div className="max-w-2xl min-h-[85vh] mt-18 mx-auto p-6 text-primary-dark">
+      <h1 className="text-3xl font-bold mb-6">Checkout</h1>
 
       {/* Booking Details */}
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
+      <div className="bg-white rounded-xl border border-primary-dark/10 shadow-sm p-6 mb-6">
         <h2 className="font-semibold mb-2">{booking.gig.title}</h2>
-        <p className="text-gray-600 mb-4">{booking.gig.description}</p>
-        <div className="flex justify-between items-center border-t pt-4">
-          <span className="text-gray-600">Total Amount</span>
-          <span className="text-2xl font-bold text-green-600">
+        <p className="text-primary-dark/70 mb-4">{booking.gig.description}</p>
+        <div className="flex justify-between items-center border-t border-primary-dark/10 pt-4">
+          <span className="text-primary-dark/70">Total Amount</span>
+          <span className="text-2xl font-bold text-primary-light">
             KES {booking.gig.price}
           </span>
         </div>
@@ -101,14 +105,14 @@ export default function CheckoutPage() {
 
       {/* Payment Status */}
       {booking.payment_status === "pending" && booking.status === "completed" && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-          <p className="text-yellow-800">
+        <div className="bg-primary-light/10 border border-primary-light/30 rounded-xl p-4 mb-6">
+          <p className="text-primary-dark">
             The seller marked this service complete. Complete payment to close
             this booking.
           </p>
           <button
             onClick={() => setShowPaymentModal(true)}
-            className="mt-3 w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors"
+            className="mt-3 w-full bg-accent text-primary-dark py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity"
           >
             Pay Now with M-Pesa
           </button>
@@ -116,22 +120,22 @@ export default function CheckoutPage() {
       )}
 
       {paymentComplete && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <p className="text-green-800">✅ Payment completed successfully!</p>
+        <div className="bg-accent/10 border border-accent/40 rounded-xl p-4">
+          <p className="text-primary-dark">✅ Payment completed successfully!</p>
         </div>
       )}
 
-      {paymentComplete && !reviewSubmitted && (
-        <div className="bg-pink-50 border border-pink-200 rounded-lg p-5 mt-6">
-          <h3 className="font-semibold text-pink-900">Leave a Review</h3>
-          <p className="text-sm text-pink-800 mt-1">
+      {canReview && !reviewSubmitted && (
+        <div className="bg-white border border-primary-light/25 rounded-xl p-5 mt-6">
+          <h3 className="font-semibold text-primary-dark">Leave a Review</h3>
+          <p className="text-sm text-primary-dark/70 mt-1">
             Help other students by rating your experience.
           </p>
 
           <div className="mt-4">
-            <label className="text-sm font-medium text-pink-900">Rating</label>
+            <label className="text-sm font-medium text-primary-dark">Rating</label>
             <select
-              className="mt-1 w-full rounded-lg border border-pink-200 bg-white px-3 py-2"
+              className="mt-1 w-full rounded-lg border border-primary-dark/20 bg-white px-3 py-2"
               value={review.rating}
               onChange={(e) =>
                 setReview((prev) => ({ ...prev, rating: Number(e.target.value) }))
@@ -146,30 +150,30 @@ export default function CheckoutPage() {
           </div>
 
           <div className="mt-3">
-            <label className="text-sm font-medium text-pink-900">Comment</label>
+            <label className="text-sm font-medium text-primary-dark">Comment</label>
             <textarea
               value={review.comment}
               onChange={(e) =>
                 setReview((prev) => ({ ...prev, comment: e.target.value }))
               }
               placeholder="How was the delivery and communication?"
-              className="mt-1 w-full min-h-24 rounded-lg border border-pink-200 bg-white px-3 py-2"
+              className="mt-1 w-full min-h-24 rounded-lg border border-primary-dark/20 bg-white px-3 py-2"
             />
           </div>
 
           <button
             onClick={handleReviewSubmit}
             disabled={reviewSubmitting}
-            className="mt-4 w-full rounded-lg bg-pink-600 py-2.5 font-semibold text-white hover:bg-pink-700 disabled:opacity-60"
+            className="mt-4 w-full rounded-lg bg-primary-light py-2.5 font-semibold text-neutral-light hover:opacity-90 disabled:opacity-60"
           >
             {reviewSubmitting ? "Submitting..." : "Submit Review"}
           </button>
         </div>
       )}
 
-      {paymentComplete && reviewSubmitted && (
-        <div className="bg-pink-50 border border-pink-200 rounded-lg p-4 mt-6">
-          <p className="text-pink-900">💗 Thanks! Your review has been saved.</p>
+      {canReview && reviewSubmitted && (
+        <div className="bg-primary-light/10 border border-primary-light/30 rounded-xl p-4 mt-6">
+          <p className="text-primary-dark">💗 Thanks! Your review has been saved.</p>
         </div>
       )}
 

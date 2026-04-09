@@ -12,6 +12,23 @@ export async function createGig(formData: FormData) {
 
   if (!user) throw new Error("Not logged in");
 
+  const title = String(formData.get("title") || "").trim();
+  const location = String(formData.get("location") || "").trim();
+  const price = Number(formData.get("price"));
+  const per = (formData.get("per") as string) || "gig";
+
+  if (!title) {
+    throw new Error("Gig title is required.");
+  }
+
+  if (!Number.isFinite(price) || price <= 0) {
+    throw new Error("Please provide a valid budget amount.");
+  }
+
+  if (!location) {
+    throw new Error("Location is required.");
+  }
+
   const categoryName = formData.get("category") as string;
 
   const { data: category, error: categoryError } = await supabase
@@ -42,11 +59,11 @@ export async function createGig(formData: FormData) {
   const { data: gig, error: gigInsertError } = await supabase
     .from("gigs")
     .insert({
-      title: formData.get("title"),
+      title,
       description: enrichedDescription,
-      price: Number(formData.get("price")),
-      per: (formData.get("per") as string) || "gig",
-      location: formData.get("location"),
+      price,
+      per,
+      location,
       category_id: category.id,
       posted_by: user.id,
     })
@@ -58,22 +75,9 @@ export async function createGig(formData: FormData) {
   }
 
   const coverFile = formData.get("cover") as File;
-  console.log(
-    "Cover file:",
-    coverFile
-      ? {
-          name: coverFile.name,
-          size: coverFile.size,
-          type: coverFile.type,
-          exists: true,
-        }
-      : "No cover file",
-  );
   if (coverFile && coverFile.size > 0) {
     const fileExt = coverFile.name.split(".").pop();
     const coverPath = `${user.id}/${gig.id}/cover-${Date.now()}.${fileExt}`;
-    console.log("Extension: ", fileExt);
-    console.log("Path: ", coverPath);
 
     const { error: uploadError } = await supabase.storage
       .from("GigCovers")
@@ -82,7 +86,6 @@ export async function createGig(formData: FormData) {
     if (!uploadError) {
       await supabase.from("gigs").update({ cover: coverPath }).eq("id", gig.id);
     }
-    console.log(uploadError);
   }
 
   const portfolioFiles = formData.getAll("portfolio") as File[];

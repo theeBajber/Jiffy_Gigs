@@ -3,8 +3,18 @@ import { GigCard } from "@/app/ui/cards";
 import { poppins } from "@/app/ui/fonts";
 import { ChevronDown, MapPin, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { categories } from "@/app/constants/categories";
 import { transformGigData } from "@/app/hooks/transformGigs";
+
+const categoryKeywordMap: Record<string, string[]> = {
+  "Design & Creative": ["design", "creative", "graphics", "branding"],
+  "Tutoring & Academic": ["tutoring", "academic", "assignment", "essay", "math"],
+  "Programming & Tech": ["programming", "tech", "coding", "software", "website"],
+  "Personal Care & Grooming": ["care", "grooming", "hair", "beauty", "lifestyle"],
+  "Events & Photography": ["events", "photography", "photo", "video"],
+};
 
 interface TransformedGig {
   id: string;
@@ -43,13 +53,25 @@ function Hero() {
         </h1>
       </div>
       <div className="w-1/2 flex items-center">
-        <img
+        <Image
           src="/portraits/person1.jpg"
+          alt="Community member portrait 1"
+          width={320}
+          height={400}
           className="w-3/10 rounded-xl -mr-8 z-2"
         />
-        <img src="/portraits/person2.jpg" className="w-2/5 rounded-xl z-5" />
-        <img
+        <Image
+          src="/portraits/person2.jpg"
+          alt="Community member portrait 2"
+          width={420}
+          height={460}
+          className="w-2/5 rounded-xl z-5"
+        />
+        <Image
           src="/portraits/person4.jpg"
+          alt="Community member portrait 3"
+          width={320}
+          height={400}
           className="w-3/10 rounded-xl -ml-8 z-2"
         />
       </div>
@@ -57,6 +79,10 @@ function Hero() {
   );
 }
 function GigCards() {
+  const searchParams = useSearchParams();
+  const initialSearchQuery =
+    searchParams.get("search") || searchParams.get("q") || "";
+
   const [gigs, setGigs] = useState<TransformedGig[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -95,15 +121,7 @@ function GigCards() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [deadline, setDeadline] = useState("Anytime");
   const [location, setLocation] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const categoryKeywordMap: Record<string, string[]> = {
-    "Design & Creative": ["design", "creative", "graphics", "branding"],
-    "Tutoring & Academic": ["tutoring", "academic", "assignment", "essay", "math"],
-    "Programming & Tech": ["programming", "tech", "coding", "software", "website"],
-    "Personal Care & Grooming": ["care", "grooming", "hair", "beauty", "lifestyle"],
-    "Events & Photography": ["events", "photography", "photo", "video"],
-  };
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
 
   const maxPrice = useMemo(() => {
     const highest = gigs.reduce((max, gig) => Math.max(max, gig.price || 0), 0);

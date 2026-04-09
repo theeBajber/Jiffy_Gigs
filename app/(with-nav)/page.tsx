@@ -1,8 +1,10 @@
-import { ArrowLeft, ArrowRight, Clipboard, Quote, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clipboard, Quote } from "lucide-react";
 import { CurrencyDollarIcon, StarIcon } from "@heroicons/react/16/solid";
 import { poppins } from "../ui/fonts";
 import { ReasonCard } from "../ui/cards";
 import Link from "next/link";
+import Image from "next/image";
+import HomeSearch from "../ui/homeSearch";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 type HomeGig = {
@@ -27,10 +29,22 @@ export default function Home() {
 function Hero() {
   return (
     <section className="w-full h-180 bg-linear-to-br to-primary-dark from-primary-light rounded-xl relative flex flex-col items-center p-8 mb-12">
-      <img src={"/about.jpg"} className="absolute -bottom-20 right-0" />
+      <Image
+        src="/about.jpg"
+        alt="Freelancer at work"
+        width={560}
+        height={560}
+        className="absolute -bottom-20 right-0 w-auto h-auto"
+      />
       <div className="w-56 h-44 absolute rounded-2xl backdrop-blur-lg bg-secondary/30 right-24 bottom-30 flex flex-col gap-2 items-center p-4">
         <div className="flex items-center gap-2 border-b pb-1.5 w-full">
-          <img src="/portraits/person6.jpg" className="h-12 rounded-full" />
+          <Image
+            src="/portraits/person6.jpg"
+            alt="Jenny profile"
+            width={48}
+            height={48}
+            className="h-12 w-12 rounded-full"
+          />
           <div className="flex flex-col">
             <div className="text-primary-dark/80">@jenny</div>
             <div className="text-primary-dark">Ui/Ux Designer</div>
@@ -61,32 +75,7 @@ function Hero() {
         HUSTLE
       </h1>
       <div className="absolute left-8 bottom-8 flex flex-col w-1/2 h-90 p-8 gap-4 text-secondary">
-        <div className="bg-neutral-light rounded-4xl h-12 w-full flex items-center justify-between px-2 text-primary-dark">
-          <Search />
-          <input
-            type="text"
-            className="w-[85%] outline-none"
-            placeholder="Search for skills..."
-          />
-          <button className="bg-primary-light aspect-square h-[85%] rounded-full text-neutral-light flex items-center justify-center">
-            <ArrowRight />
-          </button>
-        </div>
-        <div className="flex items-center gap-2 text-primary-dark">
-          <span className="text-secondary">{`Popular skills: `}</span>
-          <button className="rounded-2xl bg-secondary p-1 px-2 text-sm">
-            Web Design
-          </button>
-          <button className="rounded-2xl bg-secondary p-1 px-2 text-sm">
-            Hair Styling
-          </button>
-          <button className="rounded-2xl bg-secondary p-1 px-2 text-sm">
-            Interior design
-          </button>
-          <button className="rounded-2xl bg-secondary p-1 px-2 text-sm">
-            Fitness Training
-          </button>
-        </div>
+        <HomeSearch />
         <p className="">
           Quick gigs, fast cash.
           <br />A platform for finding and offering micro-jobs within university
@@ -98,26 +87,47 @@ function Hero() {
               Trusted Gigsters
             </h4>
             <div className="flex items-center ">
-              <img src="/portraits/person1.jpg" className="rounded-full h-12" />
-              <img
+              <Image
+                src="/portraits/person1.jpg"
+                alt="Gigster profile 1"
+                width={48}
+                height={48}
+                className="rounded-full h-12 w-12"
+              />
+              <Image
                 src="/portraits/person2.jpg"
-                className="rounded-full h-12 -ml-4"
+                alt="Gigster profile 2"
+                width={48}
+                height={48}
+                className="rounded-full h-12 w-12 -ml-4"
               />
-              <img
+              <Image
                 src="/portraits/person3.jpg"
-                className="rounded-full h-12 -ml-4"
+                alt="Gigster profile 3"
+                width={48}
+                height={48}
+                className="rounded-full h-12 w-12 -ml-4"
               />
-              <img
+              <Image
                 src="/portraits/person4.jpg"
-                className="rounded-full h-12 -ml-4"
+                alt="Gigster profile 4"
+                width={48}
+                height={48}
+                className="rounded-full h-12 w-12 -ml-4"
               />
-              <img
+              <Image
                 src="/portraits/person5.jpg"
-                className="rounded-full h-12 -ml-4"
+                alt="Gigster profile 5"
+                width={48}
+                height={48}
+                className="rounded-full h-12 w-12 -ml-4"
               />
-              <img
+              <Image
                 src="/portraits/person6.jpg"
-                className="rounded-full h-12 -ml-4"
+                alt="Gigster profile 6"
+                width={48}
+                height={48}
+                className="rounded-full h-12 w-12 -ml-4"
               />
             </div>
           </div>
@@ -209,11 +219,13 @@ async function Services() {
                 href={`/gigs/${gig.id}`}
                 className="group flex items-center border-b last:border-b-0 md:nth-last-[-n+2]:border-b-0 md:border-r md:nth-[2n]:border-r-0"
               >
-                <div className="w-1/2 h-52 overflow-hidden bg-slate-100">
-                  <img
+                <div className="relative w-1/2 h-52 overflow-hidden bg-slate-100">
+                  <Image
                     src={gig.image}
                     alt={gig.title}
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    fill
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    className="object-cover transition-transform duration-300 group-hover:scale-105"
                   />
                 </div>
                 <div className="w-1/2 p-4 flex flex-col gap-2">
@@ -260,7 +272,13 @@ function Why() {
         </p>
       </div>
       <div className="w-full flex items-center justify-between">
-        <img className="h-120 -mb-14" src="/choose.png" />
+        <Image
+          src="/choose.png"
+          alt="People collaborating"
+          width={640}
+          height={480}
+          className="h-120 w-auto -mb-14"
+        />
         <div className="flex flex-col w-1/2 gap-4 items-end overflow-visible">
           <ReasonCard
             className=""
@@ -301,12 +319,18 @@ function Why() {
             <Quote />
           </div>
           <p className="max-w-175">
-            "JiffyGigs helped me pay for textbooks this semester. I tutored a
+            &ldquo;JiffyGigs helped me pay for textbooks this semester. I tutored a
             few first-years in Python, and the cash came in fast—no scams, no
-            stress!"
+            stress!&rdquo;
           </p>
           <div className="flex items-center mt-2 gap-2">
-            <img className="rounded-full h-14" src="/portraits/person6.jpg" />
+            <Image
+              src="/portraits/person6.jpg"
+              alt="Jennifer Groot"
+              width={56}
+              height={56}
+              className="rounded-full h-14 w-14"
+            />
             <div className="flex flex-col">
               <div className="text-lg font-semibold">Jennifer Groot</div>
               <div className="text-sm text-primary-dark/80">Student, UoN</div>

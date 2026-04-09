@@ -12,6 +12,7 @@ import {
   StarIcon,
 } from "lucide-react";
 import { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -42,6 +43,17 @@ export default async function GigDetails({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const one = <T,>(value: T | T[] | null | undefined): T | undefined =>
+    Array.isArray(value) ? value[0] : (value ?? undefined);
+
+  type ReviewRow = {
+    id: string;
+    rating: number;
+    comment: string | null;
+    created_at: string;
+    reviewer?: { name?: string } | Array<{ name?: string }>;
+  };
+
   const { id } = await params;
   const supabase = await createServerSupabaseClient();
   const { data: gig, error } = await supabase
@@ -56,6 +68,9 @@ export default async function GigDetails({
     notFound();
   }
   const transformedGig = transformGigData(gig as DatabaseGig);
+  const categoryName = one<{ name?: string }>(gig.categories)?.name || "General";
+  const seller = one<{ name?: string; institution?: string; campus_verified?: boolean; profile_pic?: string | null }>(gig.users);
+  const postedAgo = transformedGig.durationPosted;
   const isAvailable = !(gig.bookings || []).some(
     (booking: { status?: string; payment_status?: string }) =>
       booking?.status === "pending" ||
@@ -65,8 +80,7 @@ export default async function GigDetails({
   );
   let rating = 0;
   let reviewCount = 0;
-  let latestReviews: any[] = [];
-  const subcategory = "Hair Grooming";
+  let latestReviews: ReviewRow[] = [];
   const formattedPrice = new Intl.NumberFormat("en-KE", {
     style: "currency",
     currency: "KES",
@@ -88,20 +102,20 @@ export default async function GigDetails({
     .order("uploaded_at", { ascending: false });
 
   try {
-    const { data: reviews } = await supabase
+    const { data: reviewRows } = await supabase
       .from("reviews")
       .select("id, rating, comment, created_at, reviewer:users!reviewer_id(name)")
       .eq("seller_id", gig.posted_by)
-      .order("created_at", { ascending: false })
-      .limit(10);
+      .order("created_at", { ascending: false });
 
-    latestReviews = reviews || [];
-    reviewCount = latestReviews.length;
+    const normalizedReviewRows = (reviewRows || []) as ReviewRow[];
+    latestReviews = normalizedReviewRows.slice(0, 3);
+    reviewCount = normalizedReviewRows.length;
     rating =
       reviewCount > 0
         ? Number(
             (
-              latestReviews.reduce((sum: number, r: any) => sum + r.rating, 0) /
+              normalizedReviewRows.reduce((sum: number, r: ReviewRow) => sum + r.rating, 0) /
               reviewCount
             ).toFixed(1),
           )
@@ -109,6 +123,10 @@ export default async function GigDetails({
   } catch {
     // no-op fallback for environments without reviews table
   }
+
+  const mapEmbedUrl = gig.location
+    ? `https://www.google.com/maps?q=${encodeURIComponent(gig.location)}&output=embed`
+    : null;
 
   return (
     <main className="w-full flex p-8 mt-18 gap-16 justify-center">
@@ -121,11 +139,10 @@ export default async function GigDetails({
           Back to Gigs
         </Link>
         <div className="flex items-center gap-2 text-sm font-semibold text-primary-dark/60">
-          <span>{gig.categories?.name || ""}</span>
-          <span>&gt;</span>
-          <span className="text-primary-light">{subcategory}</span>
+          <span>{categoryName}</span>
+          <span>•</span>
+          <span className="text-primary-light">{gig.location || "On campus"}</span>
         </div>
-        {/* {transformedGig.durationPosted} */}
         <h2 className={`${poppins.className} text-4xl font-bold`}>
           {gig.title}
         </h2>
@@ -142,16 +159,22 @@ export default async function GigDetails({
         </div>
         <div className="w-full py-4 border-y border-primary-dark/50 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img className="rounded-full size-14" src={transformedGig.image} />
+            <Image
+              className="rounded-full size-14 object-cover"
+              src={transformedGig.image}
+              alt={seller?.name || "Gig provider"}
+              width={56}
+              height={56}
+            />
             <div className="flex flex-col">
               <h3 className="text-lg font-bold capitalize flex items-center gap-1">
                 {transformedGig.gigger}
-                {gig.users?.campus_verified && (
+                {seller?.campus_verified && (
                   <BadgeCheck className="size-5 text-primary-light" />
                 )}
               </h3>
               <div className="italic text-primary-dark/50 font-light">
-                3yrs experience
+                {seller?.institution || "Campus provider"} • Posted {postedAgo}
               </div>
             </div>
           </div>
@@ -171,9 +194,7 @@ export default async function GigDetails({
             {gig.description}
           </p>
           <p className="text-primary-dark/70 leading-relaxed">
-            This service is offered by a verified campus peer. All sessions can
-            be scheduled at your convenience. Feel free to reach out with any
-            questions before booking.
+            Category: {categoryName} • Location: {gig.location || "On campus"} • Billing: {gig.per}
           </p>
         </div>
         {Array.isArray(portfolios) && portfolios.length > 0 && (
@@ -195,10 +216,12 @@ export default async function GigDetails({
                     rel="noreferrer"
                     className="block h-28 overflow-hidden rounded-lg border bg-white"
                   >
-                    <img
+                    <Image
                       src={data.publicUrl}
                       alt={item.file_name || `Portfolio ${index + 1}`}
                       className="h-full w-full object-cover"
+                      width={280}
+                      height={112}
                     />
                   </a>
                 );
@@ -213,11 +236,11 @@ export default async function GigDetails({
           {latestReviews.length === 0 ? (
             <p className="text-primary-dark/60 text-sm">No reviews yet.</p>
           ) : (
-            latestReviews.slice(0, 3).map((review: any) => (
+            latestReviews.slice(0, 3).map((review: ReviewRow) => (
               <div key={review.id} className="rounded-lg border p-3 bg-white">
                 <div className="flex items-center justify-between">
                   <p className="font-semibold text-sm">
-                    {review.reviewer?.name || "Anonymous"}
+                    {one<{ name?: string }>(review.reviewer)?.name || "Anonymous"}
                   </p>
                   <p className="text-xs text-primary-dark/60">
                     {review.rating}/5
@@ -225,6 +248,9 @@ export default async function GigDetails({
                 </div>
                 <p className="text-sm text-primary-dark/70 mt-1">
                   {review.comment || "No written comment."}
+                </p>
+                <p className="text-[11px] text-primary-dark/50 mt-2">
+                  {new Date(review.created_at).toLocaleDateString("en-KE")}
                 </p>
               </div>
             ))
@@ -239,13 +265,20 @@ export default async function GigDetails({
               <MapPin className="size-5 text-primary-light" />
               {gig.location}
             </h4>
-            <iframe
-              width="100%"
-              height="100%"
-              allowFullScreen
-              loading="lazy"
-              src="https://www.openstreetmap.org/export/embed.html?bbox=37.08857%2C-1.04276%2C37.09392%2C-1.03951&layer=mapnik&marker=-1.041136%2C37.091249"
-            ></iframe>
+            {mapEmbedUrl ? (
+              <iframe
+                width="100%"
+                height="100%"
+                allowFullScreen
+                loading="lazy"
+                src={mapEmbedUrl}
+                title={`Map for ${gig.location}`}
+              ></iframe>
+            ) : (
+              <div className="h-full w-full rounded-lg bg-neutral-light flex items-center justify-center text-primary-dark/60">
+                Location map unavailable for this gig.
+              </div>
+            )}
           </div>
         </div>
       </div>

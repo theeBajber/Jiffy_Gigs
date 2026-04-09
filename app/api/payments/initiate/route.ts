@@ -81,8 +81,9 @@ export async function POST(req: NextRequest) {
       .from("payments")
       .select("*")
       .eq("booking_id", bookingId)
+      .eq("user_id", user.id)
       .in("status", ["pending", "completed"])
-      .single();
+      .maybeSingle();
 
     if (existingPayment) {
       return NextResponse.json(
@@ -138,6 +139,9 @@ export async function POST(req: NextRequest) {
         status: "pending",
         phone_number: phoneNumber,
         metadata: {
+          direction: "buyer_debit",
+          payer_id: user.id,
+          recipient_id: bookingGig.posted_by,
           merchant_request_id: stkResponse.MerchantRequestID,
           checkout_request_id: stkResponse.CheckoutRequestID,
           gig_title: bookingGig.title,

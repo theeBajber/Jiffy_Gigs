@@ -5,7 +5,7 @@ import { BookingCard } from "@/app/ui/cards";
 import { poppins } from "@/app/ui/fonts";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type BookingView = "made" | "provided";
 type FilterStatus = "all" | "pending" | "active" | "completed";
@@ -33,14 +33,44 @@ interface Booking {
 
 export default function Bookings() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [view, setView] = useState<BookingView>("made");
   const [filter, setFilter] = useState<FilterStatus>("all");
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const updateQueryParams = (
+    nextView: BookingView,
+    nextFilter: FilterStatus,
+  ) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", nextView);
+    params.set("filter", nextFilter);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
   useEffect(() => {
     fetchBookings();
   }, []);
+
+  useEffect(() => {
+    const viewParam = searchParams.get("view");
+    const filterParam = searchParams.get("filter");
+
+    if (viewParam === "made" || viewParam === "provided") {
+      setView((prev) => (prev === viewParam ? prev : viewParam));
+    }
+
+    if (
+      filterParam === "all" ||
+      filterParam === "pending" ||
+      filterParam === "active" ||
+      filterParam === "completed"
+    ) {
+      setFilter((prev) => (prev === filterParam ? prev : filterParam));
+    }
+  }, [searchParams]);
 
   const fetchBookings = async () => {
     try {
@@ -73,10 +103,20 @@ export default function Bookings() {
       if (!res.ok) throw new Error(data.error || "Failed to cancel");
 
       setBookings((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, status: "cancelled" } : b)),
+        prev.map((b) =>
+          b.id === id
+            ? {
+                ...b,
+                status: (data.booking?.status as Booking["status"]) || "cancelled",
+                payment_status:
+                  (data.booking?.payment_status as Booking["payment_status"]) ||
+                  b.payment_status,
+              }
+            : b,
+        ),
       );
-    } catch {
-      alert("Failed to cancel booking");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to cancel booking");
     }
   };
 
@@ -87,12 +127,23 @@ export default function Bookings() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bookingId: id, action: "accept" }),
       });
-      if (!res.ok) throw new Error("Failed to accept booking");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to accept booking");
       setBookings((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, status: "active" } : b)),
+        prev.map((b) =>
+          b.id === id
+            ? {
+                ...b,
+                status: (data.booking?.status as Booking["status"]) || "active",
+                payment_status:
+                  (data.booking?.payment_status as Booking["payment_status"]) ||
+                  b.payment_status,
+              }
+            : b,
+        ),
       );
-    } catch {
-      alert("Failed to accept booking");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to accept booking");
     }
   };
 
@@ -104,21 +155,38 @@ export default function Bookings() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bookingId: id, action: "complete" }),
       });
-      if (!res.ok) throw new Error("Failed to update");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update");
       setBookings((prev) =>
         prev.map((b) =>
           b.id === id
-            ? { ...b, status: "completed", payment_status: "pending" }
+            ? {
+                ...b,
+                status: (data.booking?.status as Booking["status"]) || "completed",
+                payment_status:
+                  (data.booking?.payment_status as Booking["payment_status"]) ||
+                  "pending",
+              }
             : b,
         ),
       );
-    } catch {
-      alert("Failed to mark as done");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to mark as done");
     }
   };
 
   const handlePay = (id: string) => {
     router.push(`/checkout/${id}`);
+  };
+
+  const handleViewChange = (nextView: BookingView) => {
+    setView(nextView);
+    updateQueryParams(nextView, filter);
+  };
+
+  const handleFilterChange = (nextFilter: FilterStatus) => {
+    setFilter(nextFilter);
+    updateQueryParams(view, nextFilter);
   };
 
   const filtered = bookings.filter((b) => {
@@ -155,7 +223,7 @@ export default function Bookings() {
       <div className="flex w-full justify-between border-b border-secondary/50 mb-4 pb-2 items-center">
         <div className="flex p-1 bg-neutral-light rounded-lg w-fit border border-secondary/30">
           <button
-            onClick={() => setView("made")}
+            onClick={() => handleViewChange("made")}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
               view === "made"
                 ? "bg-white text-primary-dark shadow-sm"
@@ -165,7 +233,7 @@ export default function Bookings() {
             Bookings I Made
           </button>
           <button
-            onClick={() => setView("provided")}
+            onClick={() => handleViewChange("provided")}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
               view === "provided"
                 ? "bg-white text-primary-dark shadow-sm"
@@ -178,7 +246,7 @@ export default function Bookings() {
 
         <div className="flex items-center gap-6">
           <button
-            onClick={() => setFilter("all")}
+            onClick={() => handleFilterChange("all")}
             className={`pb-3 text-sm font-medium transition-colors relative ${
               filter === "all"
                 ? "text-primary-dark"
@@ -191,7 +259,7 @@ export default function Bookings() {
             )}
           </button>
           <button
-            onClick={() => setFilter("pending")}
+            onClick={() => handleFilterChange("pending")}
             className={`pb-3 text-sm font-medium transition-colors relative ${
               filter === "pending"
                 ? "text-primary-dark"
@@ -213,7 +281,7 @@ export default function Bookings() {
             )}
           </button>
           <button
-            onClick={() => setFilter("active")}
+            onClick={() => handleFilterChange("active")}
             className={`pb-3 text-sm font-medium transition-colors relative ${
               filter === "active"
                 ? "text-primary-dark"
@@ -235,7 +303,7 @@ export default function Bookings() {
             )}
           </button>
           <button
-            onClick={() => setFilter("completed")}
+            onClick={() => handleFilterChange("completed")}
             className={`pb-3 text-sm font-medium transition-colors relative ${
               filter === "completed"
                 ? "text-primary-dark"

@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { NextResponse } from "next/server";
 
 type SellerReviewRow = {
@@ -10,7 +11,8 @@ type SellerReviewRow = {
 };
 
 export async function GET(req: Request) {
-  const supabase = await createServerSupabaseClient();
+  const authClient = await createServerSupabaseClient();
+  const supabase = createAdminSupabaseClient();
   const { searchParams } = new URL(req.url);
   const sellerId = searchParams.get("sellerId");
   const bookingId = searchParams.get("bookingId");
@@ -26,7 +28,7 @@ export async function GET(req: Request) {
     if (bookingId) {
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await authClient.auth.getUser();
 
       if (!user) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -90,11 +92,12 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const supabase = await createServerSupabaseClient();
+  const authClient = await createServerSupabaseClient();
+  const supabase = createAdminSupabaseClient();
 
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await authClient.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -102,8 +105,9 @@ export async function POST(req: Request) {
 
   try {
     const { bookingId, rating, comment } = await req.json();
+    const parsedRating = Number(rating);
 
-    if (!bookingId || !rating || rating < 1 || rating > 5) {
+    if (!bookingId || Number.isNaN(parsedRating) || parsedRating < 1 || parsedRating > 5) {
       return NextResponse.json(
         { error: "bookingId and rating (1-5) are required" },
         { status: 400 },
@@ -157,6 +161,13 @@ export async function POST(req: Request) {
 
     const gigData = Array.isArray(booking.gig) ? booking.gig[0] : booking.gig;
 
+    if (!gigData?.posted_by) {
+      return NextResponse.json(
+        { error: "Invalid booking gig data for review" },
+        { status: 400 },
+      );
+    }
+
     const { data: created, error: createError } = await supabase
       .from("reviews")
       .insert({
@@ -164,7 +175,7 @@ export async function POST(req: Request) {
         gig_id: booking.gig_id,
         seller_id: gigData?.posted_by,
         reviewer_id: user.id,
-        rating,
+        rating: parsedRating,
         comment: (comment || "").trim() || null,
       })
       .select("*")
@@ -179,11 +190,11 @@ export async function POST(req: Request) {
         user_id: gigData?.posted_by,
         type: "review_received",
         title: "New review received",
-        message: `You received a ${rating}-star rating from a buyer.`,
+        message: `You received a ${parsedRating}-star rating from a buyer.`,
         metadata: {
           booking_id: bookingId,
           review_id: created.id,
-          rating,
+          rating: parsedRating,
         },
       });
     } catch {

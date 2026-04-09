@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { poppins } from "./fonts";
 import Link from "next/link";
+import Image from "next/image";
 
 export const ReasonCard = ({
   className,
@@ -55,6 +56,8 @@ export const GigCard = ({
   tags,
   giggerAvatar,
   gigger,
+  rating,
+  reviewsCount,
   charges,
   image,
   proximity,
@@ -68,6 +71,8 @@ export const GigCard = ({
   tags: string[];
   giggerAvatar: string;
   gigger: string;
+  rating?: number;
+  reviewsCount?: number;
   charges: string;
   image: string;
   proximity: string;
@@ -77,9 +82,11 @@ export const GigCard = ({
     <Link href={`/gigs/${id}`} className="block h-full">
       <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition-shadow hover:shadow-xl">
         <div className="relative h-40 w-full overflow-hidden bg-indigo-50">
-          <img
+          <Image
             alt={title}
-            src={image}
+            src={image || "/gigs/design.jpg"}
+            fill
+            sizes="(max-width: 768px) 100vw, 33vw"
             className="object-cover w-full opacity-80 transition-transform duration-500 group-hover:scale-105"
           />
           <span className="absolute right-3 top-3 rounded-full bg-white px-3 py-1 text-xs font-bold text-primary shadow-sm">
@@ -101,7 +108,7 @@ export const GigCard = ({
               {title}
             </h3>
             <span className="shrink-0 text-xl font-extrabold text-primary">
-              {charges}
+              KES {charges}
             </span>
           </div>
           <p className="mt-2 line-clamp-2 text-sm text-slate-500">
@@ -128,18 +135,23 @@ export const GigCard = ({
           <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
             <div className="flex items-center gap-2">
               <div className="relative h-8 w-8 overflow-hidden rounded-full border-2 border-white">
-                <img
+                <Image
                   alt={gigger}
-                  src={giggerAvatar}
-                  className="object-cover"
+                  src={giggerAvatar || "/portraits/person1.jpg"}
+                  fill
                   sizes="32px"
+                  className="object-cover"
                 />
               </div>
               <div>
                 <p className="text-xs font-bold">{gigger}</p>
                 <div className="flex items-center gap-1 text-[10px] font-bold text-yellow-500">
                   <Star size={12} className="fill-current" />
-                  <span>4.9 (12)</span>
+                  <span>
+                    {typeof rating === "number" && typeof reviewsCount === "number"
+                      ? `${rating.toFixed(1)} (${reviewsCount})`
+                      : "New seller"}
+                  </span>
                 </div>
               </div>
             </div>
@@ -193,14 +205,17 @@ export function BookingCard({
   const isPaid = ["paid", "completed"].includes(payment_status);
   const isPending = status === "pending";
   const isActive = status === "active";
+  const isCancelled = status === "cancelled";
   return (
     <div className="flex w-full justify-between rounded-xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-md">
       <Link className="flex items-start gap-4" href={`/checkout/${id}`}>
         <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-blue-50 text-primary overflow-hidden">
           {cover ? (
-            <img
+            <Image
               src={cover}
               alt={title}
+              width={64}
+              height={64}
               className="h-full w-full object-cover"
             />
           ) : (
@@ -277,7 +292,7 @@ export function BookingCard({
         )}
 
         {/* Cancel option for both (if not completed) */}
-        {!isCompleted && (
+        {!isCompleted && !isCancelled && (
           <button
             onClick={onCancel}
             className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 transition-colors"

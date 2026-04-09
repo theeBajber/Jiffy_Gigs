@@ -20,6 +20,7 @@ type PublicGig = {
   title: string;
   price: number;
   per: string;
+  location?: string | null;
   cover: string | null;
   cover_url: string | null;
   is_available: boolean;
@@ -28,6 +29,9 @@ type PublicGig = {
 };
 
 export default async function PublicProfile({ params }: PageProps) {
+  const one = <T,>(value: T | T[] | null | undefined): T | undefined =>
+    Array.isArray(value) ? value[0] : (value ?? undefined);
+
   const supabase = await createServerSupabaseClient();
 
   // Fetch public profile data
@@ -44,7 +48,9 @@ export default async function PublicProfile({ params }: PageProps) {
   // Fetch user's active gigs
   const { data: gigsData, error: gigsError } = await supabase
     .from("gigs")
-    .select("id, title, price, per, cover, categories(name), bookings(status, payment_status)")
+    .select(
+      "id, title, price, per, location, cover, categories(name), bookings(status, payment_status)",
+    )
     .eq("posted_by", params.id)
     .order("created_at", { ascending: false });
 
@@ -80,6 +86,38 @@ export default async function PublicProfile({ params }: PageProps) {
     .from("gigs")
     .select("*", { count: "exact", head: true })
     .eq("posted_by", params.id);
+
+  const { data: reviewRows } = await supabase
+    .from("reviews")
+    .select("rating")
+    .eq("seller_id", params.id);
+
+  const totalReviews = (reviewRows || []).length;
+  const averageRating =
+    totalReviews > 0
+      ? Number(
+          (
+            (reviewRows || []).reduce((sum, row) => sum + Number(row.rating || 0), 0) /
+            totalReviews
+          ).toFixed(1),
+        )
+      : 0;
+
+  const availableGigs = gigs.filter((gig) => gig.is_available).length;
+  const takenGigs = gigs.length - availableGigs;
+  const profileLocation = gigs.find((gig) => gig.location)?.location || "Campus area";
+  const memberSince = profile.created_at
+    ? new Date(profile.created_at).toLocaleDateString("en-KE", {
+        month: "short",
+        year: "numeric",
+      })
+    : "Recently";
+
+  const priceFormatter = new Intl.NumberFormat("en-KE", {
+    style: "currency",
+    currency: "KES",
+    maximumFractionDigits: 0,
+  });
 
   return (
     <div className="min-h-screen bg-background-light p-6">
@@ -133,7 +171,7 @@ export default async function PublicProfile({ params }: PageProps) {
             </div>
 
             <Link
-              href={`/chat?with=${profile.id}`}
+              href={`/chat/${profile.id}`}
               className="flex items-center gap-2 bg-primary-light text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-dark transition-colors"
             >
               <MessageCircle size={20} />
@@ -154,11 +192,20 @@ export default async function PublicProfile({ params }: PageProps) {
               )}
               <span className="flex items-center gap-1">
                 <MapPin size={16} className="text-primary-light" />
-                On Campus
+                {profileLocation}
               </span>
               <span className="flex items-center gap-1">
                 <Briefcase size={16} className="text-primary-light" />
                 {totalGigs || 0} Gigs
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="text-primary-light">★</span>
+                {totalReviews > 0
+                  ? `${averageRating} (${totalReviews} reviews)`
+                  : "No reviews yet"}
+              </span>
+              <span className="flex items-center gap-1">
+                Joined {memberSince}
               </span>
             </div>
           </div>
@@ -169,7 +216,10 @@ export default async function PublicProfile({ params }: PageProps) {
       <div className="mt-8">
         <h2 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-2">
           <Grid3x3 className="text-primary-light" />
-          Active Gigs
+          Posted Gigs
+          <span className="ml-2 text-sm font-medium text-slate-500">
+            ({availableGigs} available • {takenGigs} taken)
+          </span>
         </h2>
 
         {gigs && gigs.length > 0 ? (
@@ -211,12 +261,10 @@ export default async function PublicProfile({ params }: PageProps) {
                   </h3>
                   <div className="flex items-center justify-between">
                     <span className="text-primary-light font-bold">
-                      KSh {gig.price}/{gig.per}
+                      {priceFormatter.format(gig.price)}/{gig.per}
                     </span>
                     <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
-                      {Array.isArray(gig.categories)
-                        ? gig.categories[0]?.name
-                        : gig.categories?.name}
+                      {one(gig.categories)?.name || "General"}
                     </span>
                   </div>
                 </div>

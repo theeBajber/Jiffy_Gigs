@@ -1,5 +1,6 @@
 // /app/api/bookings/route.ts
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { NextResponse } from "next/server";
 
 async function createNotification(
@@ -275,10 +276,11 @@ export async function GET() {
 
 // PATCH - Update status or payment
 export async function PATCH(req: Request) {
-  const supabase = await createServerSupabaseClient();
+  const authSupabase = await createServerSupabaseClient();
+  const supabase = createAdminSupabaseClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await authSupabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
@@ -286,8 +288,12 @@ export async function PATCH(req: Request) {
 
   const { bookingId, status, payment_status, action } = await req.json();
 
+  if (!bookingId) {
+    return NextResponse.json({ error: "Booking ID is required" }, { status: 400 });
+  }
+
   // Verify provider owns this booking's gig
-  const { data: booking } = await supabase
+  const { data: booking, error: bookingError } = await supabase
     .from("bookings")
     .select(
       `
@@ -298,8 +304,11 @@ export async function PATCH(req: Request) {
     .eq("id", bookingId)
     .single();
 
-  if (!booking) {
-    return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+  if (bookingError || !booking) {
+    return NextResponse.json(
+      { error: bookingError?.message || "Booking not found" },
+      { status: 404 },
+    );
   }
 
   const gigData = Array.isArray(booking.gig) ? booking.gig[0] : booking.gig;
@@ -352,12 +361,14 @@ export async function PATCH(req: Request) {
       }
 
       updates.status = "cancelled";
+      updates.payment_status = "failed";
     } else if (
       isClient &&
       ["pending", "active"].includes(booking.status) &&
       !["paid", "completed"].includes(booking.payment_status)
     ) {
       updates.status = "cancelled";
+      updates.payment_status = "failed";
     } else {
       return NextResponse.json(
         { error: "Unauthorized action" },
@@ -394,12 +405,10 @@ export async function PATCH(req: Request) {
     );
   }
 
-  const { data: updated, error } = await supabase
+  const { error } = await supabase
     .from("bookings")
     .update(updates)
-    .eq("id", bookingId)
-    .select()
-    .single();
+    .eq("id", bookingId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
@@ -428,15 +437,39 @@ export async function PATCH(req: Request) {
     });
   }
 
-  return NextResponse.json({ success: true, booking: updated });
+  if (normalizedAction === "cancel") {
+    const recipientId = isProvider ? booking.user_id : gigData?.posted_by;
+
+    if (recipientId) {
+      await createNotification(supabase, {
+        user_id: recipientId,
+        type: "booking_cancelled",
+        title: "Booking cancelled",
+        message: "A booking was cancelled before completion.",
+        metadata: { booking_id: bookingId },
+      });
+    }
+  }
+
+  const { data: updatedBooking } = await supabase
+    .from("bookings")
+    .select("id, status, payment_status")
+    .eq("id", bookingId)
+    .maybeSingle();
+
+  return NextResponse.json({
+    success: true,
+    booking: updatedBooking || { id: bookingId, ...updates },
+  });
 }
 
 // DELETE - Cancel booking
 export async function DELETE(req: Request) {
-  const supabase = await createServerSupabaseClient();
+  const authSupabase = await createServerSupabaseClient();
+  const supabase = createAdminSupabaseClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await authSupabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
@@ -467,8 +500,9 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
 
+  const gigData = Array.isArray(booking.gig) ? booking.gig[0] : booking.gig;
   const isClient = booking.user_id === user.id;
-  const isProvider = booking.gig?.[0]?.posted_by === user.id;
+  const isProvider = gigData?.posted_by === user.id;
 
   if (!isClient && !isProvider) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
@@ -491,7 +525,7 @@ export async function DELETE(req: Request) {
 
   const { error } = await supabase
     .from("bookings")
-    .update({ status: "cancelled" })
+    .update({ status: "cancelled", payment_status: "failed" })
     .eq("id", bookingId);
 
   if (error) {

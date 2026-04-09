@@ -127,6 +127,39 @@ async function processPaymentResult({
 
     // Optional: Create notification for seller
     const sellerId = payment.metadata?.seller_id;
+
+    // Mirror seller-side credit record for clear sender/receiver money flow in-app.
+    if (sellerId && sellerId !== payment.user_id) {
+      const { data: existingSellerCredit } = await supabase
+        .from("payments")
+        .select("id")
+        .eq("booking_id", payment.booking_id)
+        .eq("user_id", sellerId)
+        .eq("metadata->>direction", "seller_credit")
+        .maybeSingle();
+
+      if (!existingSellerCredit) {
+        await supabase.from("payments").insert({
+          booking_id: payment.booking_id,
+          user_id: sellerId,
+          amount: payment.amount,
+          method: "mpesa",
+          status: "completed",
+          phone_number: null,
+          transaction_id: mpesaReceiptNumber,
+          completed_at: new Date().toISOString(),
+          metadata: {
+            direction: "seller_credit",
+            payer_id: payment.user_id,
+            recipient_id: sellerId,
+            source_payment_id: payment.id,
+            result_code: resultCode,
+            result_desc: resultDesc,
+          },
+        });
+      }
+    }
+
     if (sellerId) {
       await supabase.from("notifications").insert({
         user_id: sellerId,
