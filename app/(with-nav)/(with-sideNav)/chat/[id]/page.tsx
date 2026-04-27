@@ -45,7 +45,7 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, loading: authLoading } = useAuth();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom when messages change
@@ -211,12 +211,17 @@ export default function Chat() {
     [router],
   );
 
-  if (!currentUser) {
+  if (authLoading) {
     return (
       <div className="w-full h-[85vh] flex items-center justify-center">
         <Loader2 className="animate-spin h-8 w-8 text-primary-light" />
       </div>
     );
+  }
+
+  if (!currentUser) {
+    router.replace("/login");
+    return null;
   }
 
   return (

@@ -12,7 +12,7 @@ export function transformGigData(gig: any) {
     if (diffInHours < 48) return `Yesterday`;
     return `${Math.floor(diffInHours / 24)} days ago`;
   };
-  let coverUrl = "/portraits/person1.jpg";
+  let coverUrl = "/cover.png";
 
   if (gig.cover) {
     const { data } = supabase.storage.from("GigCovers").getPublicUrl(gig.cover);

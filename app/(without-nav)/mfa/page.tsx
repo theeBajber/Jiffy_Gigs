@@ -20,7 +20,9 @@ export default function MFAPage() {
       ? sessionStorage.getItem("mfaChallengeId") || ""
       : "",
   );
-  const [cooldown, setCooldown] = useState(() => (factorId === "email" ? 60 : 0));
+  const [cooldown, setCooldown] = useState(() =>
+    factorId === "email" ? 60 : 0,
+  );
   const [resendState, setResendState] = useState<{
     error?: string;
     success?: string;
@@ -29,7 +31,7 @@ export default function MFAPage() {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const router = useRouter();
   const [resendPending, startResendTransition] = useTransition();
-  
+
   const [state, formAction, pending] = useActionState(verifyMFA, null);
 
   useEffect(() => {
@@ -87,8 +89,11 @@ export default function MFAPage() {
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
-    const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-    
+    const pastedData = e.clipboardData
+      .getData("text")
+      .replace(/\D/g, "")
+      .slice(0, 6);
+
     if (pastedData.length === 6) {
       setCode(pastedData.split(""));
       inputRefs.current[5]?.focus();
@@ -120,7 +125,9 @@ export default function MFAPage() {
         <div className="w-full flex flex-col items-center gap-6">
           <div className="flex items-center gap-3">
             <KeyRound className="size-8 text-accent" />
-            <h1 className={`text-3xl uppercase font-bold ${poppins.className} text-neutral-light`}>
+            <h1
+              className={`text-3xl uppercase font-bold ${poppins.className} text-neutral-light`}
+            >
               Verify Identity
             </h1>
           </div>
@@ -150,7 +157,11 @@ export default function MFAPage() {
             </div>
           )}
 
-          <form id="mfa-form" action={formAction} className="w-full flex flex-col items-center gap-6">
+          <form
+            id="mfa-form"
+            action={formAction}
+            className="w-full flex flex-col items-center gap-6"
+          >
             <input type="hidden" name="factorId" value={factorId} />
             <input type="hidden" name="challengeId" value={challengeId} />
             <input type="hidden" name="code" value={code.join("")} />
@@ -159,7 +170,9 @@ export default function MFAPage() {
               {code.map((digit, index) => (
                 <input
                   key={index}
-                  ref={(el) => { inputRefs.current[index] = el; }}
+                  ref={(el) => {
+                    inputRefs.current[index] = el;
+                  }}
                   type="text"
                   inputMode="numeric"
                   maxLength={1}
@@ -191,12 +204,17 @@ export default function MFAPage() {
           </form>
 
           {factorId === "email" && (
-            <form onSubmit={handleResend} className="w-full flex justify-center -mt-2">
+            <form
+              onSubmit={handleResend}
+              className="w-full flex justify-center -mt-2"
+            >
               <input type="hidden" name="factorId" value={factorId} />
               <input type="hidden" name="challengeId" value={challengeId} />
               <button
                 type="submit"
-                disabled={pending || resendPending || cooldown > 0 || !challengeId}
+                disabled={
+                  pending || resendPending || cooldown > 0 || !challengeId
+                }
                 className="text-sm text-accent hover:text-accent/80 disabled:text-secondary/60 disabled:cursor-not-allowed transition-colors"
               >
                 {resendPending
@@ -225,11 +243,12 @@ export default function MFAPage() {
         <Image
           src="/will.png"
           alt="MFA illustration"
-          width={800}
-          height={800}
+          width={315}
+          height={500}
           className="object-cover"
         />
       </div>
     </section>
   );
 }
+
