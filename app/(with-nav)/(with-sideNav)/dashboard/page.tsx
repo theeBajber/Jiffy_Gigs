@@ -72,6 +72,14 @@ const categoryColors: Record<string, string> = {
   Writing: "text-brand-info bg-brand-info/10 border-brand-info/20",
 };
 
+const getAvatarUrl = (path?: string) => {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base) return null;
+  return `${base}/storage/v1/object/public/avatars/${path}`;
+};
+
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,7 +91,9 @@ export default function Dashboard() {
       setLoading(true);
       setError(null);
 
-      const response = await fetch("/api/dashboard", { credentials: "include" });
+      const response = await fetch("/api/dashboard", {
+        credentials: "include",
+      });
       const payload = await response.json();
 
       if (!response.ok) {
@@ -135,11 +145,14 @@ export default function Dashboard() {
     return (
       <section className="flex w-full h-[85vh] items-center justify-center p-6">
         <div className="w-full max-w-md rounded-2xl border border-brand-border bg-white p-6 text-center shadow-sm">
-          <h2 className={`${poppins.className} text-xl font-bold text-brand-text`}>
+          <h2
+            className={`${poppins.className} text-xl font-bold text-brand-text`}
+          >
             Couldn&apos;t load dashboard
           </h2>
           <p className={`${inter.className} mt-2 text-sm text-brand-muted`}>
-            {error || "Something went wrong while fetching your dashboard data."}
+            {error ||
+              "Something went wrong while fetching your dashboard data."}
           </p>
           <button
             onClick={fetchDashboard}
@@ -161,7 +174,8 @@ export default function Dashboard() {
     recommendedOffset + recommendedPageSize,
   );
   const canGoPrev = recommendedOffset > 0;
-  const canGoNext = recommendedOffset + recommendedPageSize < recommended.length;
+  const canGoNext =
+    recommendedOffset + recommendedPageSize < recommended.length;
 
   return (
     <section className="flex w-full flex-col gap-4 overflow-y-scroll p-4 pl-6 text-brand-text h-[85vh]">
@@ -442,7 +456,10 @@ export default function Dashboard() {
                   disabled={!canGoNext}
                   onClick={() =>
                     setRecommendedOffset((prev) =>
-                      Math.min(prev + recommendedPageSize, Math.max(recommended.length - recommendedPageSize, 0)),
+                      Math.min(
+                        prev + recommendedPageSize,
+                        Math.max(recommended.length - recommendedPageSize, 0),
+                      ),
                     )
                   }
                   className="rounded-lg border border-brand-border bg-white p-2 text-brand-muted shadow-sm transition-colors hover:bg-gray-50 hover:text-brand-info disabled:cursor-not-allowed disabled:opacity-40"
@@ -495,13 +512,22 @@ export default function Dashboard() {
                       <div className="flex items-center justify-between border-t border-brand-border pt-4">
                         <div className="flex items-center gap-2">
                           {gig.provider.pic ? (
-                            <Image
-                              alt={gig.provider.name || "Provider"}
-                              src={gig.provider.pic}
-                              width={24}
-                              height={24}
-                              className="h-6 w-6 rounded-full"
-                            />
+                            (() => {
+                              const avatarUrl = getAvatarUrl(gig.provider.pic);
+                              return avatarUrl ? (
+                                <Image
+                                  alt={gig.provider.name || "Provider"}
+                                  src={avatarUrl}
+                                  width={24}
+                                  height={24}
+                                  className="h-6 w-6 rounded-full"
+                                />
+                              ) : (
+                                <div className="h-6 w-6 rounded-full bg-primary-light/20 flex items-center justify-center text-xs font-bold text-primary-light">
+                                  {gig.provider.name?.[0] || "?"}
+                                </div>
+                              );
+                            })()
                           ) : (
                             <div className="h-6 w-6 rounded-full bg-primary-light/20 flex items-center justify-center text-xs font-bold text-primary-light">
                               {gig.provider.name?.[0] || "?"}

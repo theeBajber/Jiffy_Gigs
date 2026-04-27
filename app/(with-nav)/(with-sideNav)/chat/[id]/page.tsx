@@ -110,35 +110,34 @@ export default function Chat() {
   useEffect(() => {
     if (!currentUser?.id || !userId) return;
 
+    const channelName = `messages-${[currentUser.id, userId].sort().join("-")}`;
+
     const channel = supabase
-      .channel(`chat:${currentUser.id}:${userId}`)
+      .channel(channelName)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "messages",
+          // Filter at DB level — only rows involving current user
+          filter: `receiver_id=eq.${currentUser.id}`,
         },
         (payload) => {
           const newMsg = payload.new as Message;
 
-          // Only add if it's part of this conversation
-          const isRelevant =
-            (newMsg.sender_id === currentUser.id &&
-              newMsg.receiver_id === userId) ||
-            (newMsg.sender_id === userId &&
-              newMsg.receiver_id === currentUser.id);
-
-          if (!isRelevant) return;
+          // Still check it's this specific conversation
+          if (newMsg.sender_id !== userId) return;
 
           setMessages((prev) => {
-            // Prevent duplicates
             if (prev.some((m) => m.id === newMsg.id)) return prev;
             return [...prev, newMsg];
           });
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Realtime status:", status); // debug
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -252,7 +251,7 @@ export default function Chat() {
       </div>
 
       {/* CHAT AREA */}
-      <div className="flex flex-col w-full bg-white/30">
+      <div className="flex flex-col min-h-0 w-full bg-white/30">
         {/* HEADER */}
         <div className="h-20 flex items-center justify-between px-6 border-b bg-white/50 backdrop-blur-sm">
           {selectedUser ? (
@@ -306,7 +305,7 @@ export default function Chat() {
         )}
 
         {/* MESSAGES */}
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-3">
           {loading ? (
             <div className="flex-1 flex items-center justify-center">
               <Loader2 className="animate-spin h-8 w-8 text-primary-light" />

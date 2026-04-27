@@ -11,7 +11,10 @@ import { poppins } from "./fonts";
 import Link from "next/link";
 import Image from "next/image";
 
-const normalizeImageSrc = (src: string | null | undefined, fallback: string) => {
+const normalizeImageSrc = (
+  src: string | null | undefined,
+  fallback: string,
+) => {
   const value = (src || "").trim();
 
   if (!value) return fallback;
@@ -102,7 +105,7 @@ export const GigCard = ({
   proximity: string;
   isAvailable?: boolean;
 }) => {
-  const cardImageSrc = normalizeImageSrc(image, "/gigs/design.jpg");
+  const cardImageSrc = normalizeImageSrc(image, "/cover.png");
   const avatarSrc = normalizeImageSrc(giggerAvatar, "/portraits/person1.jpg");
 
   return (
@@ -177,7 +180,8 @@ export const GigCard = ({
                 <div className="flex items-center gap-1 text-[10px] font-bold text-yellow-500">
                   <Star size={12} className="fill-current" />
                   <span>
-                    {typeof rating === "number" && typeof reviewsCount === "number"
+                    {typeof rating === "number" &&
+                    typeof reviewsCount === "number"
                       ? `${rating.toFixed(1)} (${reviewsCount})`
                       : "New seller"}
                   </span>
@@ -265,9 +269,9 @@ export function BookingCard({
                 ? "Completed"
                 : isPending
                   ? "Pending Acceptance"
-                : isActive
-                  ? "In Progress"
-                  : "Cancelled"}
+                  : isActive
+                    ? "In Progress"
+                    : "Cancelled"}
             </span>
             <span className="text-xs text-slate-400">•</span>
             <span className="text-xs text-slate-500"># {id.slice(0, 12)}</span>
